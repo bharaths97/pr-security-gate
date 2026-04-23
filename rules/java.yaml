@@ -1,0 +1,71 @@
+rules:
+  - id: java-hardcoded-secret-assignment
+    languages:
+      - java
+    severity: ERROR
+    message: Hardcoded secret detected in source code.
+    patterns:
+      - pattern: String $SECRET = "...";
+      - metavariable-regex:
+          metavariable: $SECRET
+          regex: (?i).*(secret|token|api_key|apikey|password|passwd|pwd).*
+    metadata:
+      severity: critical
+      cwe: CWE-798
+      fix: Move the secret into configuration or a secret manager.
+
+  - id: java-runtime-exec
+    languages:
+      - java
+    severity: ERROR
+    message: External command execution detected via Runtime.exec.
+    patterns:
+      - pattern: Runtime.getRuntime().exec($CMD);
+    metadata:
+      severity: high
+      cwe: CWE-78
+      fix: Avoid Runtime.exec on untrusted input and prefer safer process invocation patterns.
+
+  - id: java-sql-string-concatenation
+    languages:
+      - java
+    severity: WARNING
+    message: SQL query built via string concatenation can lead to injection.
+    patterns:
+      - pattern-either:
+          - pattern: String $QUERY = "..." + $INPUT;
+          - pattern: $STMT.executeQuery("..." + $INPUT);
+          - pattern: $STMT.executeUpdate("..." + $INPUT);
+    metadata:
+      severity: high
+      cwe: CWE-89
+      fix: Use PreparedStatement with parameter binding instead of string concatenation.
+
+  - id: java-insecure-deserialization-readobject
+    languages:
+      - java
+    severity: ERROR
+    message: ObjectInputStream.readObject can lead to insecure deserialization.
+    patterns:
+      - pattern: $OIS.readObject()
+      - pattern-inside: |
+          ObjectInputStream $OIS = new ObjectInputStream(...);
+          ...
+    metadata:
+      severity: high
+      cwe: CWE-502
+      fix: Avoid Java native deserialization for untrusted data.
+
+  - id: java-trust-all-hostname-verifier
+    languages:
+      - java
+    severity: ERROR
+    message: Hostname verification is overridden to always trust.
+    patterns:
+      - pattern-either:
+          - pattern: $CONN.setHostnameVerifier(($HOST, $SESSION) -> true);
+          - pattern: HttpsURLConnection.setDefaultHostnameVerifier(($HOST, $SESSION) -> true);
+    metadata:
+      severity: high
+      cwe: CWE-297
+      fix: Use the default hostname verifier or a strict custom verifier.

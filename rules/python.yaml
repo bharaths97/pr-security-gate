@@ -1,0 +1,102 @@
+rules:
+  - id: python-hardcoded-secret-assignment
+    languages:
+      - python
+    severity: ERROR
+    message: Hardcoded secret detected in source code.
+    patterns:
+      - pattern-either:
+          - pattern: $SECRET = "..."
+          - pattern: $SECRET = '...'
+      - metavariable-regex:
+          metavariable: $SECRET
+          regex: (?i).*(secret|token|api_key|apikey|password|passwd|pwd).*
+    metadata:
+      severity: critical
+      cwe: CWE-798
+      fix: Move the secret to a secure secret manager or environment variable.
+
+  - id: python-sql-string-concatenation
+    languages:
+      - python
+    severity: WARNING
+    message: SQL query built via string concatenation can lead to injection.
+    patterns:
+      - pattern-either:
+          - pattern: $QUERY = "..." + $VALUE
+          - pattern: $QUERY = '...' + $VALUE
+          - pattern: cursor.execute("..." + $VALUE)
+          - pattern: cursor.execute('...' + $VALUE)
+      - metavariable-regex:
+          metavariable: $QUERY
+          regex: (?i).*(query|sql|statement).*
+    metadata:
+      severity: high
+      cwe: CWE-89
+      fix: Use parameterized queries instead of concatenating user-controlled input.
+
+  - id: python-missing-auth-decorator
+    languages:
+      - python
+    severity: WARNING
+    message: Sensitive endpoint appears to be missing an authentication decorator.
+    patterns:
+      - pattern-inside: |
+          @app.route(...)
+          def $FUNC(...):
+            ...
+      - pattern-not-inside: |
+          @require_auth
+          def $FUNC(...):
+            ...
+      - metavariable-regex:
+          metavariable: $FUNC
+          regex: (?i).*(admin|private|sensitive|internal).*
+    metadata:
+      severity: medium
+      cwe: CWE-306
+      fix: Add an authentication or authorization decorator before exposing the endpoint.
+
+  - id: python-subprocess-shell-true-user-input
+    languages:
+      - python
+    severity: ERROR
+    message: User-controlled input is passed into a shell command.
+    patterns:
+      - pattern-either:
+          - pattern: subprocess.run("..." + $USER_INPUT, shell=True, ...)
+          - pattern: subprocess.call("..." + $USER_INPUT, shell=True, ...)
+          - pattern: subprocess.Popen("..." + $USER_INPUT, shell=True, ...)
+          - pattern: os.system("..." + $USER_INPUT)
+    metadata:
+      severity: high
+      cwe: CWE-78
+      fix: Avoid shell execution with user input. Pass arguments as a list and validate or allowlist input.
+
+  - id: python-pickle-loads-untrusted-data
+    languages:
+      - python
+    severity: ERROR
+    message: Untrusted data is deserialized with pickle.
+    patterns:
+      - pattern-either:
+          - pattern: pickle.loads($DATA)
+          - pattern: pickle.load($STREAM)
+    metadata:
+      severity: high
+      cwe: CWE-502
+      fix: Avoid pickle for untrusted input. Use a safe serialization format such as JSON.
+
+  - id: python-jwt-verify-signature-disabled
+    languages:
+      - python
+    severity: ERROR
+    message: JWT decoding disables signature verification.
+    patterns:
+      - pattern-either:
+          - pattern: 'jwt.decode($TOKEN, options={"verify_signature": False}, ...)'
+          - pattern: 'jwt.decode($TOKEN, $KEY, options={"verify_signature": False}, ...)'
+    metadata:
+      severity: high
+      cwe: CWE-347
+      fix: Always verify JWT signatures with the expected key and algorithm.

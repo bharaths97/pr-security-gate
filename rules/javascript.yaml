@@ -1,0 +1,85 @@
+rules:
+  - id: javascript-hardcoded-secret-assignment
+    languages:
+      - javascript
+      - typescript
+    severity: ERROR
+    message: Hardcoded secret detected in source code.
+    patterns:
+      - pattern-either:
+          - pattern: const $SECRET = "..."
+          - pattern: let $SECRET = "..."
+          - pattern: var $SECRET = "..."
+          - pattern: const $SECRET = '...'
+          - pattern: let $SECRET = '...'
+          - pattern: var $SECRET = '...'
+      - metavariable-regex:
+          metavariable: $SECRET
+          regex: (?i).*(secret|token|api_key|apikey|password|passwd|pwd).*
+    metadata:
+      severity: critical
+      cwe: CWE-798
+      fix: Move the secret into environment variables or a secret manager.
+
+  - id: javascript-child-process-exec-user-input
+    languages:
+      - javascript
+      - typescript
+    severity: ERROR
+    message: User-controlled input is passed into a shell command.
+    patterns:
+      - pattern-either:
+          - pattern: exec("..." + $USER_INPUT)
+          - pattern: child_process.exec("..." + $USER_INPUT)
+          - pattern: execSync("..." + $USER_INPUT)
+          - pattern: child_process.execSync("..." + $USER_INPUT)
+    metadata:
+      severity: high
+      cwe: CWE-78
+      fix: Avoid shell execution with user input. Use argument arrays and validate input.
+
+  - id: javascript-eval-user-input
+    languages:
+      - javascript
+      - typescript
+    severity: ERROR
+    message: Dynamic code execution with user input detected.
+    patterns:
+      - pattern-either:
+          - pattern: eval($USER_INPUT)
+          - pattern: new Function($USER_INPUT)
+    metadata:
+      severity: high
+      cwe: CWE-95
+      fix: Avoid eval-like APIs on untrusted data.
+
+  - id: javascript-open-redirect-query-param
+    languages:
+      - javascript
+      - typescript
+    severity: WARNING
+    message: Request query parameter is used directly in a redirect.
+    patterns:
+      - pattern-either:
+          - pattern: res.redirect(req.query.$PARAM)
+          - pattern: response.redirect(req.query.$PARAM)
+          - pattern: reply.redirect(req.query.$PARAM)
+    metadata:
+      severity: medium
+      cwe: CWE-601
+      fix: Validate redirect targets against an allowlist before redirecting.
+
+  - id: javascript-jwt-decode-without-verify
+    languages:
+      - javascript
+      - typescript
+    severity: WARNING
+    message: JWT is decoded without signature verification.
+    patterns:
+      - pattern-either:
+          - pattern: jwt.decode($TOKEN)
+          - pattern: jsonwebtoken.decode($TOKEN)
+    metadata:
+      severity: high
+      cwe: CWE-347
+      fix: Use JWT verification APIs instead of decode-only helpers for trust decisions.

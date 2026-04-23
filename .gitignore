@@ -1,0 +1,14 @@
+.DS_Store
+.internal/
+.semgrep/
+.semgrep-settings.yml
+.venv/
+.venv_sys/
+__pycache__/
+scanner/__pycache__/
+*.pyc
+*.log
+comment-preview.md
+scan-results.json
+triaged-findings.json
+

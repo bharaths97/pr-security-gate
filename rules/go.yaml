@@ -1,0 +1,70 @@
+rules:
+  - id: go-hardcoded-secret-assignment
+    languages:
+      - go
+    severity: ERROR
+    message: Hardcoded secret detected in source code.
+    patterns:
+      - pattern-either:
+          - pattern: var $SECRET = "..."
+          - pattern: const $SECRET = "..."
+          - pattern: $SECRET := "..."
+      - metavariable-regex:
+          metavariable: $SECRET
+          regex: (?i).*(secret|token|api_key|apikey|password|passwd|pwd).*
+    metadata:
+      severity: critical
+      cwe: CWE-798
+      fix: Move the secret into configuration or a secret manager.
+
+  - id: go-command-shell-execution
+    languages:
+      - go
+    severity: ERROR
+    message: Shell command execution detected with sh -c.
+    patterns:
+      - pattern-either:
+          - pattern: exec.Command("sh", "-c", $CMD)
+          - pattern: exec.Command("/bin/sh", "-c", $CMD)
+    metadata:
+      severity: high
+      cwe: CWE-78
+      fix: Avoid shell execution and pass arguments directly to exec.Command.
+
+  - id: go-insecure-skip-verify
+    languages:
+      - go
+    severity: ERROR
+    message: TLS certificate verification is disabled.
+    patterns:
+      - pattern: 'tls.Config{..., InsecureSkipVerify: true, ...}'
+    metadata:
+      severity: high
+      cwe: CWE-295
+      fix: Do not disable TLS verification outside controlled test code.
+
+  - id: go-template-html-untrusted-input
+    languages:
+      - go
+    severity: WARNING
+    message: Untrusted input is cast to trusted HTML.
+    patterns:
+      - pattern: template.HTML($INPUT)
+    metadata:
+      severity: high
+      cwe: CWE-79
+      fix: Avoid marking untrusted input as safe HTML.
+
+  - id: go-weak-crypto-md5
+    languages:
+      - go
+    severity: WARNING
+    message: MD5 is used in a security-sensitive context.
+    patterns:
+      - pattern-either:
+          - pattern: md5.New()
+          - pattern: md5.Sum(...)
+    metadata:
+      severity: medium
+      cwe: CWE-327
+      fix: Use a modern cryptographic primitive such as SHA-256 or a stronger password hashing function when appropriate.

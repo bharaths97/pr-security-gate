@@ -1,0 +1,9 @@
+.git
+.venv
+.venv_sys
+__pycache__
+.pytest_cache
+.mypy_cache
+.semgrep
+scan-results.json
+triaged-findings.json

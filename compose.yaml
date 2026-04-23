@@ -1,0 +1,14 @@
+name: cicd
+
+services:
+  security-gate:
+    build:
+      context: .
+    working_dir: /app
+    volumes:
+      - .:/app
+    environment:
+      HOME: /tmp/semgrep-home
+      SEMGREP_SETTINGS_FILE: /tmp/semgrep-home/settings.yml
+      SEMGREP_SEND_METRICS: "off"
+      SEMGREP_ENABLE_VERSION_CHECK: "0"

@@ -1,0 +1,73 @@
+name: PR Security Gate Reusable
+
+on:
+  workflow_call:
+    secrets:
+      github-token:
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  security-scan:
+    name: PR Security Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolve central workflow source
+        id: source
+        shell: bash
+        run: |
+          workflow_ref="${{ github.workflow_ref }}"
+          workflow_repo="${workflow_ref%%/.github/workflows/*}"
+          workflow_version="${workflow_ref#*@}"
+          echo "repository=$workflow_repo" >> "$GITHUB_OUTPUT"
+          echo "ref=$workflow_version" >> "$GITHUB_OUTPUT"
+
+      - name: Check out caller repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check out PR Security Gate
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.source.outputs.repository }}
+          ref: ${{ steps.source.outputs.ref }}
+          path: .pr-security-gate
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PR Security Gate dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r .pr-security-gate/requirements.txt
+
+      - name: Run scoped Semgrep scan
+        env:
+          GITHUB_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python .pr-security-gate/scanner/run_scan.py \
+            --rules .pr-security-gate/rules \
+            --output scan-results.json
+
+      - name: Triage findings
+        run: |
+          python .pr-security-gate/scanner/triage.py \
+            --input scan-results.json \
+            --output triaged-findings.json
+
+      - name: Comment on pull request
+        env:
+          GITHUB_TOKEN: ${{ secrets.github-token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          python .pr-security-gate/scanner/comment.py \
+            --input triaged-findings.json
