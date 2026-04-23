@@ -71,7 +71,10 @@ permissions:
 
 jobs:
   pr-security-gate:
-    uses: your-user-or-org/pr-security-gate/.github/workflows/pr-security-gate-reusable.yml@main
+    uses: bharaths97/pr-security-gate/.github/workflows/pr-security-gate-reusable.yml@main
+    with:
+      security-gate-repository: bharaths97/pr-security-gate
+      security-gate-ref: main
     secrets:
       github-token: ${{ secrets.GITHUB_TOKEN }}
 ```

@@ -38,7 +38,7 @@
 ## Data Flow
 
 1. Pull request event starts the workflow.
-2. The caller repository is checked out for scanning, and the central PR Security Gate repository is checked out for shared workflow assets.
+2. The caller repository is checked out for scanning, and the configured PR Security Gate repository is checked out for shared workflow assets.
 3. Changed files are identified with `git diff`.
 4. Semgrep scans the changed source files with the custom rules.
 5. Findings are normalized and prioritized.

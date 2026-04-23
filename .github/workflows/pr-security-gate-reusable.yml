@@ -2,6 +2,17 @@ name: PR Security Gate Reusable
 
 on:
   workflow_call:
+    inputs:
+      security-gate-repository:
+        description: Repository that contains the PR Security Gate scanner code.
+        required: false
+        type: string
+        default: bharaths97/pr-security-gate
+      security-gate-ref:
+        description: Git ref to use when checking out the PR Security Gate scanner code.
+        required: false
+        type: string
+        default: main
     secrets:
       github-token:
         required: true
@@ -16,16 +27,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Resolve central workflow source
-        id: source
-        shell: bash
-        run: |
-          workflow_ref="${{ github.workflow_ref }}"
-          workflow_repo="${workflow_ref%%/.github/workflows/*}"
-          workflow_version="${workflow_ref#*@}"
-          echo "repository=$workflow_repo" >> "$GITHUB_OUTPUT"
-          echo "ref=$workflow_version" >> "$GITHUB_OUTPUT"
-
       - name: Check out caller repository
         uses: actions/checkout@v4
         with:
@@ -34,9 +35,12 @@ jobs:
       - name: Check out PR Security Gate
         uses: actions/checkout@v4
         with:
-          repository: ${{ steps.source.outputs.repository }}
-          ref: ${{ steps.source.outputs.ref }}
+          repository: ${{ inputs.security-gate-repository }}
+          ref: ${{ inputs.security-gate-ref }}
           path: .pr-security-gate
+
+      - name: Verify PR Security Gate checkout
+        run: test -f .pr-security-gate/requirements.txt
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
