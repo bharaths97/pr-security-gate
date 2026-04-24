@@ -169,3 +169,9 @@ CareTrack is the current demo consumer repo:
 Its wrapper workflow belongs at:
 
 - `.github/workflows/pr-security-gate.yml`
+
+Live validation result:
+
+- CareTrack PR #3 was validated successfully in `cloud` mode using the thin-wrapper pattern
+- the PR Security Gate comment posted successfully
+- the run reported `2` high findings and `0` critical findings in the demo command-injection route

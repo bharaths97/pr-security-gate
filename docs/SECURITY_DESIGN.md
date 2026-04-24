@@ -4,8 +4,9 @@
 
 - The reusable workflow design is implemented
 - Local rule validation is implemented
+- Semgrep Cloud support is implemented and validated on a live consumer PR
 - The first multi-language expansion wave is implemented and validated locally
-- The live consumer-repo proof step is still pending
+- The live consumer-repo proof step is complete
 - Expanded cross-language rule depth is still a roadmap item beyond the current 21-rule baseline
 
 ## Goals
@@ -89,5 +90,5 @@ This project uses the `pull_request` event, not `pull_request_target`, because t
 - Pin GitHub Actions by commit SHA
 - Add explicit automated rule tests
 - Expand beyond the current 21 local custom rules and include more obscure vulnerability patterns
-- Validate Semgrep Cloud on a live PR and document its tradeoffs against local custom-rule mode
+- Document Semgrep Cloud tradeoffs against local custom-rule mode using the validated consumer-repo run
 - Add screenshots from a real PR run

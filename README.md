@@ -28,7 +28,7 @@ Private working notes are kept in a local gitignored `.internal/` directory and 
 - Completed: reusable workflow model for multi-repo consumption
 - Completed: local validation of 21 custom Semgrep rules across Python, JavaScript/TypeScript, Go, and Java
 - Completed: local markdown preview for the PR comment body
-- In progress: live end-to-end demo against a separate consumer repository
+- Completed: live end-to-end consumer-repo validation in both local and Semgrep Cloud modes
 - Planned: pin Actions by SHA, add real PR evidence, and keep expanding the rule library beyond the current first wave
 
 ## Project Layout
@@ -178,7 +178,7 @@ That makes it useful for both security teams and developers:
 ## Roadmap
 
 - Grow the current 21-rule baseline into a larger library with more obscure vulnerability checks
-- Validate the Semgrep Cloud backend on a live PR and document the local-vs-cloud tradeoffs
+- Document the local-vs-cloud tradeoffs from the validated Semgrep Cloud backend
 - Capture real PR screenshots from the consumer demo repo
 - Pin third-party GitHub Actions by commit SHA
 

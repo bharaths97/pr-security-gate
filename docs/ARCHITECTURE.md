@@ -4,11 +4,11 @@
 
 - Implemented: reusable workflow plus thin local wrapper workflow
 - Implemented: local custom-rule scanning with Semgrep
-- Implemented: optional Semgrep Cloud backend selection through the reusable workflow
+- Implemented and live-validated: optional Semgrep Cloud backend selection through the reusable workflow
 - Implemented: triage, deduplication, severity grouping, and PR comment rendering
 - Implemented: first validated multi-language rule wave with 21 rules across Python, JavaScript/TypeScript, Go, and Java
-- In progress: first live consumer-repo run
-- Planned: deeper rule expansion and live Semgrep Cloud validation
+- Implemented: live consumer-repo validation
+- Planned: deeper rule expansion and follow-up documentation of local-vs-cloud tradeoffs
 
 ## Components
 
