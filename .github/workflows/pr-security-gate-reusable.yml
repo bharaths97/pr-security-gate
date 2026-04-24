@@ -13,9 +13,16 @@ on:
         required: false
         type: string
         default: main
+      scan-mode:
+        description: "Scan backend to use: local custom rules or Semgrep Cloud."
+        required: false
+        type: string
+        default: local
     secrets:
       github-token:
         required: true
+      semgrep-app-token:
+        required: false
 
 permissions:
   contents: read
@@ -56,8 +63,10 @@ jobs:
         env:
           GITHUB_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SEMGREP_APP_TOKEN: ${{ secrets.semgrep-app-token }}
         run: |
           python .pr-security-gate/scanner/run_scan.py \
+            --mode "${{ inputs.scan-mode }}" \
             --rules .pr-security-gate/rules \
             --output scan-results.json
 

@@ -16,7 +16,19 @@ This project is designed to show both application security scanning and CI/CD se
 
 ### Scan Only Changed Files
 
-`scanner/run_scan.py` scopes Semgrep to the files changed in the pull request by using `git diff` between the PR base and head SHAs. This keeps results relevant to the code under review and reduces the noise that often causes security tooling to be ignored.
+`scanner/run_scan.py` scopes the pull request context by using `git diff` between the PR base and head SHAs. In local mode, it scans only matching changed source files with the repository's custom Semgrep rules. In cloud mode, it runs `semgrep ci` with the repository's Semgrep AppSec Platform configuration while preserving the same downstream triage contract.
+
+This keeps results focused on the pull request instead of turning the workflow into a noisy full-repository dump.
+
+### Explicit Backend Selection
+
+The reusable workflow uses an explicit `scan-mode` input instead of auto-detecting the backend.
+
+- `local` remains the default
+- `cloud` requires `SEMGREP_APP_TOKEN`
+- cloud mode does not silently fall back to local mode
+
+This keeps the workflow behavior predictable during rollout, demos, and debugging.
 
 ### Fail Only on Critical Findings
 
@@ -49,6 +61,25 @@ The Docker path exists to avoid host Python and Semgrep compatibility issues. It
 
 The project is structured as a reusable workflow so the scanner logic can stay centralized in one repository instead of being copied into every consumer repository. Downstream repositories only need a small wrapper workflow that calls the shared workflow.
 
+### Explicit Consumer Contract
+
+The consumer contract is intentionally split into:
+
+- a shared engine in `.github/workflows/pr-security-gate-reusable.yml`
+- a self-test wrapper in `.github/workflows/security-scan.yml`
+- a tiny wrapper workflow in each client repository
+
+That separation matters because distribution is part of the design, not just the docs. Client repositories should only own their trigger file and their environment-specific secrets. The scanner logic, triage behavior, and comment rendering remain centralized here.
+
+### Secret Ownership
+
+Client-specific secrets stay with the client repository or organization.
+
+- `GITHUB_TOKEN` comes from the client repo's GitHub Actions runtime
+- `SEMGREP_APP_TOKEN` belongs in the client repo or org secrets when cloud mode is enabled
+
+This repository should not own or store downstream Semgrep Cloud tokens.
+
 ## Trust Boundary Notes
 
 This project uses the `pull_request` event, not `pull_request_target`, because the latter changes the trust boundary and can be dangerous when running on untrusted fork content. For a showcase project, this is an important design choice to explain clearly.
@@ -58,5 +89,5 @@ This project uses the `pull_request` event, not `pull_request_target`, because t
 - Pin GitHub Actions by commit SHA
 - Add explicit automated rule tests
 - Expand beyond the current 21 local custom rules and include more obscure vulnerability patterns
-- Add Semgrep Cloud as an optional backend alongside local custom rules
+- Validate Semgrep Cloud on a live PR and document its tradeoffs against local custom-rule mode
 - Add screenshots from a real PR run

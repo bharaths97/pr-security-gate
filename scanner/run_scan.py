@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -28,9 +29,14 @@ SUPPORTED_EXTENSIONS = {
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--mode",
+        choices=("local", "cloud"),
+        default="local",
+        help="Scanning backend to use. Defaults to local custom rules.",
+    )
+    parser.add_argument(
         "--rules",
-        required=True,
-        help="Path to the Semgrep rules file.",
+        help="Path to the Semgrep rules directory or file for local mode.",
     )
     parser.add_argument(
         "--output",
@@ -58,8 +64,7 @@ def run_git_diff(base_sha: str, head_sha: str) -> list[str]:
         capture_output=True,
         text=True,
     )
-    files = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-    return files
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
 def filter_scannable_files(files: list[str]) -> list[str]:
@@ -74,23 +79,23 @@ def filter_scannable_files(files: list[str]) -> list[str]:
     return filtered
 
 
-def empty_results(reason: str, changed_files: list[str]) -> dict[str, Any]:
+def empty_results(reason: str, changed_files: list[str], scanned_files: list[str], scanner: str) -> dict[str, Any]:
     return {
         "results": [],
         "errors": [],
         "paths": {
-            "scanned": [],
+            "scanned": scanned_files,
             "changed": changed_files,
         },
         "metadata": {
             "reason": reason,
-            "scanner": "semgrep",
+            "scanner": scanner,
         },
     }
 
 
-def run_semgrep(rules_path: str, files: list[str]) -> dict[str, Any]:
-    command = [
+def build_local_command(rules_path: str, files: list[str]) -> list[str]:
+    return [
         "semgrep",
         "scan",
         "--config",
@@ -100,25 +105,94 @@ def run_semgrep(rules_path: str, files: list[str]) -> dict[str, Any]:
         "--error",
         *files,
     ]
+
+
+def build_cloud_command(base_sha: str, json_output_path: Path) -> list[str]:
+    return [
+        "semgrep",
+        "ci",
+        "--baseline-commit",
+        base_sha,
+        "--json-output",
+        str(json_output_path),
+    ]
+
+
+def normalize_scan_payload(
+    payload: dict[str, Any],
+    *,
+    changed_files: list[str],
+    scanned_files: list[str],
+    scanner: str,
+    reason: str,
+) -> dict[str, Any]:
+    payload.setdefault("results", [])
+    payload.setdefault("errors", [])
+    payload.setdefault("paths", {})
+    payload.setdefault("metadata", {})
+    payload["paths"]["changed"] = changed_files
+    payload["paths"]["scanned"] = scanned_files
+    payload["metadata"]["reason"] = reason
+    payload["metadata"]["scanner"] = scanner
+    return payload
+
+
+def run_local_scan(rules_path: str | None, files: list[str], changed_files: list[str]) -> dict[str, Any]:
+    if not rules_path:
+        raise SystemExit("--rules is required when --mode local is used.")
+
     result = subprocess.run(
-        command,
+        build_local_command(rules_path, files),
         capture_output=True,
         text=True,
     )
 
     if result.returncode not in (0, 1):
         raise RuntimeError(
-            "Semgrep execution failed.\n"
+            "Semgrep local scan failed.\n"
             f"STDOUT:\n{result.stdout}\n"
             f"STDERR:\n{result.stderr}"
         )
 
     payload = json.loads(result.stdout or "{}")
-    payload.setdefault("results", [])
-    payload.setdefault("errors", [])
-    payload.setdefault("paths", {})
-    payload["paths"]["scanned"] = files
-    return payload
+    return normalize_scan_payload(
+        payload,
+        changed_files=changed_files,
+        scanned_files=files,
+        scanner="semgrep",
+        reason="Scan completed.",
+    )
+
+
+def run_cloud_scan(base_sha: str, files: list[str], changed_files: list[str]) -> dict[str, Any]:
+    if not os.getenv("SEMGREP_APP_TOKEN"):
+        raise SystemExit("SEMGREP_APP_TOKEN must be set when --mode cloud is used.")
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        output_path = Path(temp_dir) / "semgrep-ci.json"
+        result = subprocess.run(
+            build_cloud_command(base_sha, output_path),
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode not in (0, 1):
+            raise RuntimeError(
+                "Semgrep cloud scan failed.\n"
+                f"STDOUT:\n{result.stdout}\n"
+                f"STDERR:\n{result.stderr}"
+            )
+
+        payload_text = output_path.read_text(encoding="utf-8") if output_path.exists() else "{}"
+        payload = json.loads(payload_text or "{}")
+
+    return normalize_scan_payload(
+        payload,
+        changed_files=changed_files,
+        scanned_files=files,
+        scanner="semgrep-cloud",
+        reason="Scan completed.",
+    )
 
 
 def main() -> int:
@@ -132,17 +206,21 @@ def main() -> int:
 
     changed_files = run_git_diff(args.base_sha, args.head_sha)
     scannable_files = filter_scannable_files(changed_files)
+    scanner_name = "semgrep-cloud" if args.mode == "cloud" else "semgrep"
 
     if not changed_files:
-        payload = empty_results("No changed files detected in diff.", changed_files)
+        payload = empty_results("No changed files detected in diff.", changed_files, [], scanner_name)
     elif not scannable_files:
-        payload = empty_results("No changed files matched supported source extensions.", changed_files)
+        payload = empty_results(
+            "No changed files matched supported source extensions.",
+            changed_files,
+            [],
+            scanner_name,
+        )
+    elif args.mode == "cloud":
+        payload = run_cloud_scan(args.base_sha, scannable_files, changed_files)
     else:
-        payload = run_semgrep(args.rules, scannable_files)
-        payload.setdefault("metadata", {})
-        payload["metadata"]["reason"] = "Scan completed."
-        payload["metadata"]["scanner"] = "semgrep"
-        payload["paths"]["changed"] = changed_files
+        payload = run_local_scan(args.rules, scannable_files, changed_files)
 
     output_path = Path(args.output)
     output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")

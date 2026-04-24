@@ -16,9 +16,12 @@ PR Security Gate is a GitHub Actions workflow that scans pull request changes wi
 
 - [Architecture Overview](docs/ARCHITECTURE.md)
 - [Security Design](docs/SECURITY_DESIGN.md)
+- [Client Integration Guide](docs/CLIENT_INTEGRATION.md)
+- [AI Integration Roadmap](docs/AI_INTEGRATION.md)
+- [Workflow Templates](docs/templates/README.md)
 - [Assets Placeholder](docs/assets/README.md)
 
-Private working notes are kept in a local gitignored `.internal/` directory and are intentionally not part of the public project documentation.
+Private working notes are kept in a local gitignored `.internal/` directory and are intentionally not part of the hosted project documentation.
 
 ## Current Status
 
@@ -46,8 +49,8 @@ requirements.txt
 
 1. The reusable workflow can be called from another repository through `workflow_call`, while this repo keeps a thin local wrapper workflow for self-demo use.
 2. The reusable workflow checks out the caller repository to scan the PR code, then checks out this repo into a hidden subdirectory so it can reuse the shared scanner code and rules.
-3. `scanner/run_scan.py` uses `git diff` between the PR base and head SHAs to identify changed files and only scans matching source files.
-4. Semgrep runs with the language-specific rule packs in [`rules/`](rules) and emits JSON findings.
+3. `scanner/run_scan.py` uses `git diff` between the PR base and head SHAs to identify changed files and supports two backends: local custom rules and Semgrep Cloud.
+4. In `local` mode, Semgrep runs with the language-specific rule packs in [`rules/`](rules). In `cloud` mode, `semgrep ci` uses the repository's Semgrep AppSec Platform configuration.
 5. `scanner/triage.py` deduplicates findings by `rule_id + file + line`, sorts them from `critical` to `low`, and emits grouped severity summaries.
 6. `scanner/comment.py` can render the markdown comment locally in dry-run mode, then uses `PyGithub` and `GITHUB_TOKEN` to upsert that same body to the pull request.
 7. If any finding is `critical`, the comment step exits non-zero so the GitHub Action fails. With branch protection enabled for this check, the PR is blocked from merging.
@@ -55,6 +58,12 @@ requirements.txt
 ## Modular Usage
 
 This repo is now structured to act as the central source of truth for the scanner logic. Consumer repositories only need a tiny wrapper workflow that calls the reusable workflow in this repo.
+
+Workflow roles:
+
+- `pr-security-gate-reusable.yml`: the shared engine client repos should call
+- `security-scan.yml`: this repo's self-test wrapper only
+- client repos: their own tiny wrapper workflow that calls the shared engine remotely
 
 Example consumer workflow:
 
@@ -73,11 +82,35 @@ jobs:
   pr-security-gate:
     uses: bharaths97/pr-security-gate/.github/workflows/pr-security-gate-reusable.yml@main
     with:
-      security-gate-repository: bharaths97/pr-security-gate
       security-gate-ref: main
+      security-gate-repository: bharaths97/pr-security-gate
+      scan-mode: local
     secrets:
       github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
+
+To opt into Semgrep Cloud mode, store `SEMGREP_APP_TOKEN` in the consumer repository or organization secrets and pass it through:
+
+```yaml
+jobs:
+  pr-security-gate:
+    uses: bharaths97/pr-security-gate/.github/workflows/pr-security-gate-reusable.yml@semgrep-cloud-scan
+    with:
+      security-gate-ref: semgrep-cloud-scan
+      scan-mode: cloud
+    secrets:
+      github-token: ${{ secrets.GITHUB_TOKEN }}
+      semgrep-app-token: ${{ secrets.SEMGREP_APP_TOKEN }}
+```
+
+Copy-ready wrapper examples live in [`docs/templates/`](docs/templates).
+
+When testing a non-`main` branch of this repo, keep both refs aligned:
+
+- the `uses: ...@branch-or-sha` ref selects which reusable workflow file GitHub loads
+- `with.security-gate-ref` selects which branch or SHA this workflow checks out for the scanner code
+
+If those two refs do not match, the workflow file and the Python scanner code can come from different revisions.
 
 ## Custom Rules Included
 
@@ -145,7 +178,7 @@ That makes it useful for both security teams and developers:
 ## Roadmap
 
 - Grow the current 21-rule baseline into a larger library with more obscure vulnerability checks
-- Add optional Semgrep Cloud support alongside the local custom-rule mode
+- Validate the Semgrep Cloud backend on a live PR and document the local-vs-cloud tradeoffs
 - Capture real PR screenshots from the consumer demo repo
 - Pin third-party GitHub Actions by commit SHA
 
