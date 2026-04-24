@@ -18,6 +18,11 @@ SEVERITY_RANK = {
 }
 
 SEVERITY_ORDER = ["critical", "high", "medium", "low"]
+SEVERITY_ALIASES = {
+    "error": "high",
+    "warning": "medium",
+    "info": "low",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -33,6 +38,8 @@ def normalize_severity(value: str | None) -> str:
     normalized = value.strip().lower()
     if normalized in SEVERITY_RANK:
         return normalized
+    if normalized in SEVERITY_ALIASES:
+        return SEVERITY_ALIASES[normalized]
     return "medium"
 
 
@@ -56,9 +63,19 @@ def normalize_finding(result: dict[str, Any]) -> dict[str, Any]:
         "file": result.get("path", ""),
         "line": int(start.get("line", 1)),
         "finding": extra.get("message", "Security finding detected."),
-        "cwe": metadata.get("cwe", "N/A"),
+        "cwe": normalize_cwe(metadata.get("cwe")),
         "fix_suggestion": metadata.get("fix", "Review and remediate this issue."),
     }
+
+
+def normalize_cwe(value: Any) -> str:
+    if isinstance(value, list):
+        cleaned = [str(item).strip() for item in value if str(item).strip()]
+        return ", ".join(cleaned) if cleaned else "N/A"
+    if value is None:
+        return "N/A"
+    cleaned = str(value).strip()
+    return cleaned or "N/A"
 
 
 def deduplicate_findings(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
