@@ -126,6 +126,19 @@ jobs:
             --input scan-results.json \
             --output triaged-findings.json
 
+      - name: Enrich findings
+        env:
+          AI_PROVIDER: ${{ inputs.ai-provider }}
+          ANTHROPIC_API_KEY: ${{ secrets.anthropic-api-key }}
+          ANTHROPIC_MODEL: ${{ inputs.anthropic-model }}
+          OPENAI_API_KEY: ${{ secrets.openai-api-key }}
+          OPENAI_MODEL: ${{ inputs.openai-model }}
+        run: |
+          python .pr-security-gate/scanner/ai_enrich.py \
+            --input triaged-findings.json \
+            --context domain_context.json \
+            --output enriched-findings.json
+
       - name: Generate PR risk narrative
         env:
           AI_PROVIDER: ${{ inputs.ai-provider }}
@@ -138,7 +151,7 @@ jobs:
           PR_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
           python .pr-security-gate/scanner/narrative.py \
-            --input triaged-findings.json \
+            --input enriched-findings.json \
             --output narrative-findings.json
 
       - name: Comment on pull request

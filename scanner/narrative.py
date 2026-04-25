@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate an optional AI risk narrative from triaged findings."""
+"""Generate an optional AI risk narrative from triaged or enriched findings."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ extract_openai_text = ai_provider.extract_openai_text
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", required=True, help="Triaged findings JSON path.")
+    parser.add_argument("--input", required=True, help="Triaged or enriched findings JSON path.")
     parser.add_argument("--output", required=True, help="Narrative findings JSON path.")
     return parser.parse_args()
 
@@ -51,9 +51,9 @@ def build_findings_block(payload: dict[str, Any]) -> str:
                 severity=str(finding.get("severity", "unknown")).upper(),
                 file=finding.get("file", ""),
                 line=finding.get("line", ""),
-                message=one_line_text(finding.get("finding", "")),
+                message=one_line_text(finding.get("enriched_finding") or finding.get("finding", "")),
                 cwe=one_line_text(finding.get("cwe", "N/A")),
-                fix=one_line_text(finding.get("fix_suggestion", "")),
+                fix=one_line_text(finding.get("enriched_fix") or finding.get("fix_suggestion", "")),
             )
         )
 

@@ -11,6 +11,7 @@ The AI roadmap extends that pipeline in stages so the project gains better revie
 - The findings table and critical-failure gate are implemented
 - Phase 1 risk narrative is implemented and validated as an optional enrichment step
 - Phase 2 domain context is implemented locally as a setup artifact for later AI phases
+- Phase 3 finding enrichment is implemented and validated in the reusable workflow between triage and narrative
 - AI prompts are centralized under `prompts/*.toml` and rendered through a shared allowlist-based loader
 - If no AI provider key is present or a provider call fails, the workflow falls back to the normal comment without weakening the gate
 
@@ -51,6 +52,20 @@ Phase 2 does not change the PR comment or merge-blocking behavior yet. It prepar
 
 Phase 2 reuses the same provider inputs as Phase 1 — no new workflow configuration is required. The same `ai-provider`, `anthropic-api-key`, `openai-api-key`, and model inputs control both steps.
 
+## Phase 3 Finding Enrichment
+
+`scanner/ai_enrich.py` reads `triaged-findings.json`, optionally combines it with `domain_context.json`, and writes `enriched-findings.json`. Each finding may gain:
+
+- `enriched_finding`
+- `enriched_fix`
+- `risk_context`
+
+When enrichment succeeds, the PR comment table prefers `enriched_finding` and `enriched_fix` over the original Semgrep strings. The narrative step also reads from `enriched-findings.json`, so the PR-level summary can reflect the improved finding text automatically.
+
+If no provider key is present, the provider call fails, the prompt fails to load, or the model returns malformed JSON, the workflow falls back to the original triaged finding text and continues normally. The critical gate still depends only on `summary.has_critical`.
+
+Phase 3 reuses the same workflow inputs and secrets as Phases 1 and 2 — no new consumer-side configuration is required beyond optionally providing an AI provider key.
+
 ## Prompt Management
 
 Prompt text is versioned separately from Python logic under `prompts/*.toml`. `scanner/prompt_loader.py` validates prompt structure, caches parsed TOML, enforces a per-prompt variable allowlist, strips control characters from injected values, and caps interpolation size before provider calls are made.
@@ -77,7 +92,7 @@ Later phases build deeper contextual reasoning and better prioritization, but th
 | --- | --- | --- |
 | Risk narrative | PR-level summary for reviewers | current triage output |
 | Domain context | app/domain understanding | none |
-| Fix suggestions | code-specific remediation guidance | best with domain context |
+| Fix suggestions | code-specific remediation guidance | triage `lines`, best with domain context |
 | Terrain synthesis | source-to-sink reasoning in changed files | changed-file scan data |
 | Adversarial verification | challenge and validate finding quality | best with terrain output |
 | Cross-file reasoning | broader multi-file context | optional later enhancement |

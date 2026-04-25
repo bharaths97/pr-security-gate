@@ -31,6 +31,7 @@ Private working notes are kept in a local gitignored `.internal/` directory and 
 - Completed: live end-to-end consumer-repo validation in both local and Semgrep Cloud modes
 - Completed: optional AI risk narrative via Anthropic or OpenAI, validated locally and in GitHub Actions
 - Completed: optional AI domain context artifact implemented and wired into the reusable workflow for later enrichment phases
+- Completed: optional AI finding enrichment step now generates `enriched-findings.json`, feeds enriched text into the PR narrative, prefers enriched text in the comment table, and has been validated in GitHub Actions
 - Planned: pin Actions by SHA, add real PR evidence, and keep expanding the rule library beyond the current first wave
 
 ## Project Layout
@@ -41,6 +42,7 @@ Private working notes are kept in a local gitignored `.internal/` directory and 
 docs/
 rules/
 scanner/ai_provider.py
+scanner/ai_enrich.py
 scanner/run_scan.py
 scanner/triage.py
 scanner/domain_context.py
@@ -57,10 +59,11 @@ requirements.txt
 3. `scanner/run_scan.py` uses `git diff` between the PR base and head SHAs to identify changed files and supports two backends: local custom rules and Semgrep Cloud.
 4. In `local` mode, Semgrep runs with the language-specific rule packs in [`rules/`](rules). In `cloud` mode, `semgrep ci` uses the repository's Semgrep AppSec Platform configuration.
 5. `scanner/domain_context.py` optionally summarizes safe, top-level project metadata into `domain_context.json` for later AI phases.
-6. `scanner/triage.py` deduplicates findings by `rule_id + file + line`, sorts them from `critical` to `low`, and emits the structured finding summary.
-7. `scanner/narrative.py` optionally adds a short AI risk narrative and writes `narrative-findings.json`.
-8. `scanner/comment.py` can render the markdown comment locally in dry-run mode, then uses `PyGithub` and `GITHUB_TOKEN` to upsert that same body to the pull request.
-9. If any finding is `critical`, the comment step exits non-zero so the GitHub Action fails. With branch protection enabled for this check, the PR is blocked from merging.
+6. `scanner/triage.py` deduplicates findings by `rule_id + file + line`, preserves Semgrep `extra.lines` snippets for later enrichment, sorts results from `critical` to `low`, and emits the structured finding summary.
+7. `scanner/ai_enrich.py` optionally generates per-finding `enriched_finding`, `enriched_fix`, and `risk_context` fields from the triaged findings plus optional domain context.
+8. `scanner/narrative.py` optionally adds a short AI risk narrative and writes `narrative-findings.json`. When enriched finding text exists, the narrative prompt uses that improved wording automatically.
+9. `scanner/comment.py` can render the markdown comment locally in dry-run mode, prefers enriched text in the findings table when available, and then uses `PyGithub` and `GITHUB_TOKEN` to upsert that same body to the pull request.
+10. If any finding is `critical`, the comment step exits non-zero so the GitHub Action fails. With branch protection enabled for this check, the PR is blocked from merging.
 
 ## Modular Usage
 
@@ -179,6 +182,25 @@ Findings: critical `4`, high `14`, medium `3`, low `0`.
 ...
 ```
 
+With AI enrichment plus narrative:
+
+```markdown
+## PR Security Gate Results
+
+> This PR introduces a hardcoded credential and an unsafe shell execution path. The exposed secret should be rotated immediately, and the shell execution path should be constrained before merge.
+
+Status: failing because at least one critical finding was detected.
+
+Scanned `21` changed source file(s) out of `21` changed file(s).
+Findings: critical `4`, high `14`, medium `3`, low `0`.
+
+| Severity | File | Line | Finding | CWE | Fix Suggestion |
+| --- | --- | --- | --- | --- | --- |
+| CRITICAL | `tests/vulnerable_samples/python/hardcoded_secret.py` | 1 | Secret material is hardcoded directly in the Python source and would be committed to version control if merged. | CWE-798 | Remove the embedded credential, rotate it, and load it from an environment variable or secret manager instead of source code. |
+| HIGH | `tests/vulnerable_samples/javascript/exec_user_input.js` | 4 | User-controlled input reaches a shell command invocation in the helper script. | CWE-78 | Pass validated arguments as an array and remove shell-based execution so user input is never interpreted by the shell. |
+...
+```
+
 ## Local Preview
 
 Run the full pipeline locally in Docker without posting to GitHub.
@@ -201,13 +223,19 @@ docker compose run --rm security-gate \
   python scanner/triage.py --input scan-results.json --output triaged-findings.json
 
 docker compose run --rm security-gate \
-  python scanner/narrative.py --input triaged-findings.json --output narrative-findings.json
+  python scanner/ai_enrich.py \
+    --input triaged-findings.json \
+    --context domain_context.json \
+    --output enriched-findings.json
+
+docker compose run --rm security-gate \
+  python scanner/narrative.py --input enriched-findings.json --output narrative-findings.json
 
 docker compose run --rm security-gate \
   python scanner/comment.py --input narrative-findings.json --dry-run --output comment-preview.md
 ```
 
-For AI smoke testing, copy `.env.ai.example` to `.env.ai`, add a provider key, and re-run the domain context or narrative step. Docker picks up `.env.ai` automatically via `compose.yaml`. If `.env.ai` is absent or contains no key, the AI steps still succeed with fallback output.
+For AI smoke testing, copy `.env.ai.example` to `.env.ai`, add a provider key, and re-run the domain context, enrichment, or narrative step. Docker picks up `.env.ai` automatically via `compose.yaml`. If `.env.ai` is absent or contains no key, the AI steps still succeed with fallback output.
 
 ## Why This Is Useful
 

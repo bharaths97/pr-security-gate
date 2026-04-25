@@ -8,6 +8,7 @@
 - Implemented: triage, deduplication, severity grouping, and PR comment rendering
 - Implemented: first validated multi-language rule wave with 21 rules across Python, JavaScript/TypeScript, Go, and Java
 - Implemented locally: optional AI domain context artifact for later enrichment phases
+- Implemented and validated: optional AI finding enrichment step between triage and narrative
 - Implemented: live consumer-repo validation
 - Implemented: local-vs-cloud tradeoff documentation
 - Planned: deeper rule expansion
@@ -43,13 +44,17 @@ AI prompt content lives in `prompts/*.toml` instead of being hardcoded in Python
 
 `scanner/domain_context.py` reads safe, top-level project metadata and writes `domain_context.json`. It builds provider prompts through the shared prompt loader instead of inline strings. The artifact is generated before scanning and cached when provider-backed generation succeeds. If no provider key is configured, no safe files exist, the prompt file is invalid, or the provider fails, it writes an unknown fallback context and the workflow continues.
 
+### Enrichment Stage
+
+`scanner/ai_enrich.py` reads `triaged-findings.json`, optionally reads `domain_context.json`, and writes `enriched-findings.json`. It sends findings in a single batch prompt, validates that the model returns a JSON array, and only applies `enriched_finding`, `enriched_fix`, and `risk_context` fields that are actually present. If no matching provider key is configured, the prompt fails to load, the provider fails, or the response is malformed, it writes the original findings through unchanged and the workflow continues.
+
 ### Narrative Stage
 
-`scanner/narrative.py` reads `triaged-findings.json`, optionally generates a short PR-level risk narrative with Anthropic or OpenAI, and writes `narrative-findings.json`. The reusable workflow controls provider selection with `ai-provider` and model selection with `anthropic-model` and `openai-model`. Prompt content is loaded from `prompts/narrative.toml` through the shared loader. If no matching provider key is configured, findings are empty, the prompt file is invalid, or the provider call fails, it writes `narrative: null` and the workflow continues normally.
+`scanner/narrative.py` reads `triaged-findings.json` or `enriched-findings.json`, optionally generates a short PR-level risk narrative with Anthropic or OpenAI, and writes `narrative-findings.json`. The reusable workflow controls provider selection with `ai-provider` and model selection with `anthropic-model` and `openai-model`. Prompt content is loaded from `prompts/narrative.toml` through the shared loader. If no matching provider key is configured, findings are empty, the prompt file is invalid, or the provider call fails, it writes `narrative: null` and the workflow continues normally.
 
 ### Comment Stage
 
-`scanner/comment.py` renders the markdown findings table for the pull request, includes the optional narrative blockquote when present, and can also preview that output locally in dry-run mode.
+`scanner/comment.py` renders the markdown findings table for the pull request, prefers enriched finding/fix text when present, includes the optional narrative blockquote when present, and can also preview that output locally in dry-run mode.
 
 ### Detection Logic
 
@@ -67,6 +72,7 @@ AI prompt content lives in `prompts/*.toml` instead of being hardcoded in Python
 4. Optional domain context is generated from safe project metadata.
 5. The selected Semgrep backend runs against the pull request context.
 6. Findings are normalized and prioritized.
-7. An optional AI risk narrative is generated from the triaged findings.
-8. A markdown comment is rendered and posted to the pull request.
-9. The workflow fails when a critical finding exists.
+7. Optional per-finding enrichment is generated from the triaged findings plus optional domain context.
+8. An optional AI risk narrative is generated from the triaged or enriched findings.
+9. A markdown comment is rendered and posted to the pull request.
+10. The workflow fails when a critical finding exists.

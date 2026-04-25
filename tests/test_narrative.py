@@ -172,6 +172,22 @@ class NarrativeTests(unittest.TestCase):
         self.assertIn("PR branch: feature/ai-phase-1", prompt)
         self.assertIn("caretrack/support_tools.py:12", prompt)
 
+    def test_build_user_prompt_prefers_enriched_fields_when_present(self) -> None:
+        payload = dict(SAMPLE_PAYLOAD)
+        payload["findings"] = [
+            {
+                **SAMPLE_PAYLOAD["findings"][0],
+                "enriched_finding": "User-controlled input reaches a shell call in support_tools.py.",
+                "enriched_fix": "Validate the helper input before execution and remove shell=True.",
+            }
+        ]
+
+        prompt = narrative.build_user_prompt(payload)
+
+        self.assertIn("User-controlled input reaches a shell call", prompt)
+        self.assertIn("remove shell=True", prompt)
+        self.assertNotIn("Command injection risk in helper script.", prompt)
+
     def test_build_system_prompt_contains_injection_defense(self) -> None:
         prompt = narrative.build_system_prompt()
 

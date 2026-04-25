@@ -49,6 +49,7 @@ DENIED_EXACT_FILES = {
     ".env.development",
     "comment-preview.md",
     "domain_context.json",
+    "enriched-findings.json",
     "narrative-findings.json",
     "scan-results.json",
     "triaged-findings.json",

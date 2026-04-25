@@ -52,7 +52,7 @@ That permission model is enough to read the repository contents and write the PR
 
 ### Domain Context Trust Boundary
 
-`scanner/domain_context.py` reads only a narrow allowlist of safe, top-level project metadata files — README, Dockerfile, dependency manifests, and example or sample configs. It explicitly denies `.env`, local environment files, all source code, and nested directories such as `.git`, `.pr-security-gate`, virtual environments, and dependency folders. It also denies its own previously generated artifacts (`scan-results.json`, `triaged-findings.json`, `narrative-findings.json`, `domain_context.json`) to prevent feedback loops. A `MAX_CONTEXT_BYTES` cap limits how much content is sent to the provider. If no safe files exist, no provider key is present, or the provider call fails, it writes a structured fallback context and the workflow continues — the scan, triage, comment, and critical gate steps are unaffected.
+`scanner/domain_context.py` reads only a narrow allowlist of safe, top-level project metadata files — README, Dockerfile, dependency manifests, and example or sample configs. It explicitly denies `.env`, local environment files, all source code, and nested directories such as `.git`, `.pr-security-gate`, virtual environments, and dependency folders. It also denies its own previously generated artifacts (`scan-results.json`, `triaged-findings.json`, `enriched-findings.json`, `narrative-findings.json`, `domain_context.json`) to prevent feedback loops. A `MAX_CONTEXT_BYTES` cap limits how much content is sent to the provider. If no safe files exist, no provider key is present, or the provider call fails, it writes a structured fallback context and the workflow continues — the scan, triage, comment, and critical gate steps are unaffected.
 
 ### Developer-Friendly Output
 
@@ -69,6 +69,8 @@ The project does not dump raw Semgrep JSON onto the pull request. Instead, it:
 The domain context step reads only safe, top-level project metadata such as README, Docker, dependency, and example config files. It does not read `.env`, source files, dependency folders, or the checked-out scanner repository. If AI is unavailable or fails, it writes an unknown fallback context and does not affect the deterministic security gate.
 
 AI prompt text is centralized under `prompts/*.toml` and rendered through `scanner/prompt_loader.py`. The loader enforces a prompt-specific variable allowlist, strips control characters from interpolated values, replaces `None` with `unknown`, and caps injected value size before provider submission. Narrative and future enrichment prompts also include an explicit instruction that user-controlled findings text must be treated as data, not as instructions.
+
+The enrichment step sends flagged code snippets from Semgrep's `extra.lines` field to the configured AI provider so the generated finding and remediation text can reference the actual code under review. That is a deliberate trust-boundary choice: the model sees changed-file snippets, but its output only affects reviewer-facing text in the PR comment and narrative.
 
 This does not eliminate prompt injection risk entirely because finding data and repository metadata can still contain adversarial strings, but it keeps that input visible, bounded, and separate from merge-blocking logic. AI output still only affects reviewer-facing text, while the critical gate remains driven by deterministic triage data.
 
