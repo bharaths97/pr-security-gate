@@ -34,7 +34,7 @@ The reusable workflow exposes explicit AI controls for the PR risk narrative:
 | --- | --- | --- |
 | `ai-provider` | `auto` | Uses Anthropic when `anthropic-api-key` is present, otherwise OpenAI when `openai-api-key` is present. Use `anthropic`, `openai`, or `none` to force a choice. |
 | `anthropic-model` | `claude-sonnet-4-6` | Model used when Anthropic is selected. |
-| `openai-model` | `gpt-4o` | Model used when OpenAI is selected. |
+| `openai-model` | `gpt-4o-mini` | Model used when OpenAI is selected. |
 
 Provider keys are passed as optional workflow secrets: `anthropic-api-key` and `openai-api-key`.
 

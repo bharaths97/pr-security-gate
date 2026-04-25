@@ -172,7 +172,7 @@ AI enrichment is optional. By default, `ai-provider: auto` uses Anthropic when `
 Model inputs are optional:
 
 - `anthropic-model`: defaults to `claude-sonnet-4-6`
-- `openai-model`: defaults to `gpt-4o`
+- `openai-model`: defaults to `gpt-4o-mini`
 
 ## Recommended Rollout
 

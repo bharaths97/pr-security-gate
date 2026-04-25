@@ -13,7 +13,7 @@ OPENAI_ENDPOINT = "https://api.openai.com/v1/chat/completions"
 ANTHROPIC_VERSION = "2023-06-01"
 REQUEST_TIMEOUT_SECONDS = 30
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6"
-DEFAULT_OPENAI_MODEL = "gpt-4o"
+DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 
 
 def select_provider() -> dict[str, str] | None:
