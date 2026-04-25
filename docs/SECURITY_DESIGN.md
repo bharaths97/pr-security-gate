@@ -50,6 +50,10 @@ The workflow requests only:
 
 That permission model is enough to read the repository contents and write the PR comment without over-granting workflow access.
 
+### Domain Context Trust Boundary
+
+`scanner/domain_context.py` reads only a narrow allowlist of safe, top-level project metadata files — README, Dockerfile, dependency manifests, and example or sample configs. It explicitly denies `.env`, local environment files, all source code, and nested directories such as `.git`, `.pr-security-gate`, virtual environments, and dependency folders. It also denies its own previously generated artifacts (`scan-results.json`, `triaged-findings.json`, `narrative-findings.json`, `domain_context.json`) to prevent feedback loops. A `MAX_CONTEXT_BYTES` cap limits how much content is sent to the provider. If no safe files exist, no provider key is present, or the provider call fails, it writes a structured fallback context and the workflow continues — the scan, triage, comment, and critical gate steps are unaffected.
+
 ### Developer-Friendly Output
 
 The project does not dump raw Semgrep JSON onto the pull request. Instead, it:
@@ -59,6 +63,10 @@ The project does not dump raw Semgrep JSON onto the pull request. Instead, it:
 - adds CWE references
 - adds fix suggestions
 - renders a readable markdown table
+
+### AI Context Boundaries
+
+The domain context step reads only safe, top-level project metadata such as README, Docker, dependency, and example config files. It does not read `.env`, source files, dependency folders, or the checked-out scanner repository. If AI is unavailable or fails, it writes an unknown fallback context and does not affect the deterministic security gate.
 
 ### Local Reproducibility
 
