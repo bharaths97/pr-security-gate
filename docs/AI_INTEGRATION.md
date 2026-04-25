@@ -10,6 +10,7 @@ The AI roadmap extends that pipeline in stages so the project gains better revie
 - The reusable workflow is working end to end
 - The findings table and critical-failure gate are implemented
 - Phase 1 risk narrative is implemented and validated as an optional enrichment step
+- Phase 2 domain context is implemented locally as a setup artifact for later AI phases
 - If no AI provider key is present or a provider call fails, the workflow falls back to the normal comment without weakening the gate
 
 ## Phase 1 Output
@@ -33,11 +34,21 @@ The reusable workflow exposes explicit AI controls for the PR risk narrative:
 | --- | --- | --- |
 | `ai-provider` | `auto` | Uses Anthropic when `anthropic-api-key` is present, otherwise OpenAI when `openai-api-key` is present. Use `anthropic`, `openai`, or `none` to force a choice. |
 | `anthropic-model` | `claude-sonnet-4-6` | Model used when Anthropic is selected. |
-| `openai-model` | `gpt-4o` | Model used when OpenAI is selected. |
+| `openai-model` | `gpt-4o-mini` | Model used when OpenAI is selected. |
 
 Provider keys are passed as optional workflow secrets: `anthropic-api-key` and `openai-api-key`.
 
 For local Docker smoke testing, copy `.env.ai.example` to `.env.ai` and set the same environment variables used by `scanner/narrative.py`. The `.env.ai` file is ignored by Git and is only for local validation.
+
+## Phase 2 Domain Context
+
+`scanner/domain_context.py` reads safe, top-level project metadata such as README, Docker, dependency, and example config files. It writes `domain_context.json` for later AI phases.
+
+If a provider key is available, the file contains a compact summary of application domain, data sensitivity, user types, deployment, and risk tier. If AI is unavailable or fails, it still writes an unknown fallback context and the workflow continues normally.
+
+Phase 2 does not change the PR comment or merge-blocking behavior yet. It prepares context for later fix-suggestion, terrain, and verification phases.
+
+Phase 2 reuses the same provider inputs as Phase 1 — no new workflow configuration is required. The same `ai-provider`, `anthropic-api-key`, `openai-api-key`, and model inputs control both steps.
 
 ## Planned Rollout
 

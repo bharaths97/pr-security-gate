@@ -51,7 +51,7 @@ That wrapper should:
 - trigger on `pull_request`
 - call this repository's reusable workflow
 - choose `scan-mode: local` or `scan-mode: cloud`
-- optionally choose AI narrative settings with `ai-provider`, `anthropic-model`, and `openai-model`
+- optionally choose AI settings with `ai-provider`, `anthropic-model`, and `openai-model`
 - pass the required secrets
 
 ## Ref Alignment Rule
@@ -160,19 +160,19 @@ jobs:
 `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`:
 
 - are stored in the client repository or organization secrets
-- are optional and only needed when the AI risk narrative should run
+- are optional and only needed when AI enrichment should run
 - if neither is passed, the workflow still posts the normal deterministic PR comment
 
 This repository should not store client-specific Semgrep tokens.
 
-## AI Narrative Options
+## AI Options
 
-The PR risk narrative is optional. By default, `ai-provider: auto` uses Anthropic when `anthropic-api-key` is passed, otherwise OpenAI when `openai-api-key` is passed. Set `ai-provider: none` to disable narrative generation explicitly.
+AI enrichment is optional. By default, `ai-provider: auto` uses Anthropic when `anthropic-api-key` is passed, otherwise OpenAI when `openai-api-key` is passed. Set `ai-provider: none` to disable AI enrichment explicitly.
 
 Model inputs are optional:
 
 - `anthropic-model`: defaults to `claude-sonnet-4-6`
-- `openai-model`: defaults to `gpt-4o`
+- `openai-model`: defaults to `gpt-4o-mini`
 
 ## Recommended Rollout
 
@@ -180,7 +180,7 @@ Model inputs are optional:
 2. Verify scan, triage, comment, and merge-gate behavior.
 3. Add `SEMGREP_APP_TOKEN` in the client repo or org.
 4. Switch that client repo to `scan-mode: cloud`.
-5. Add either `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` if the PR risk narrative should run.
+5. Add either `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` if AI enrichment should run.
 6. Validate the hosted `semgrep ci` payload and PR comment behavior.
 
 ## CareTrack Example

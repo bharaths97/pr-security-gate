@@ -15,4 +15,5 @@ comment-preview.md
 scan-results.json
 triaged-findings.json
 narrative-findings.json
+domain_context.json
 .pytest_cache/

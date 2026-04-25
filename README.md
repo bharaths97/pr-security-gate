@@ -30,6 +30,7 @@ Private working notes are kept in a local gitignored `.internal/` directory and 
 - Completed: local markdown preview for the PR comment body
 - Completed: live end-to-end consumer-repo validation in both local and Semgrep Cloud modes
 - Completed: optional AI risk narrative via Anthropic or OpenAI, validated locally and in GitHub Actions
+- Completed: optional AI domain context artifact implemented and wired into the reusable workflow for later enrichment phases
 - Planned: pin Actions by SHA, add real PR evidence, and keep expanding the rule library beyond the current first wave
 
 ## Project Layout
@@ -37,11 +38,12 @@ Private working notes are kept in a local gitignored `.internal/` directory and 
 ```text
 .github/workflows/pr-security-gate-reusable.yml
 .github/workflows/security-scan.yml
-.github/workflows/test.yml
 docs/
 rules/
+scanner/ai_provider.py
 scanner/run_scan.py
 scanner/triage.py
+scanner/domain_context.py
 scanner/narrative.py
 scanner/comment.py
 tests/vulnerable_samples/
@@ -54,10 +56,11 @@ requirements.txt
 2. The reusable workflow checks out the caller repository to scan the PR code, then checks out this repo into a hidden subdirectory so it can reuse the shared scanner code and rules.
 3. `scanner/run_scan.py` uses `git diff` between the PR base and head SHAs to identify changed files and supports two backends: local custom rules and Semgrep Cloud.
 4. In `local` mode, Semgrep runs with the language-specific rule packs in [`rules/`](rules). In `cloud` mode, `semgrep ci` uses the repository's Semgrep AppSec Platform configuration.
-5. `scanner/triage.py` deduplicates findings by `rule_id + file + line`, sorts them from `critical` to `low`, and emits the structured finding summary.
-6. `scanner/narrative.py` optionally adds a short AI risk narrative and writes `narrative-findings.json`.
-7. `scanner/comment.py` can render the markdown comment locally in dry-run mode, then uses `PyGithub` and `GITHUB_TOKEN` to upsert that same body to the pull request.
-8. If any finding is `critical`, the comment step exits non-zero so the GitHub Action fails. With branch protection enabled for this check, the PR is blocked from merging.
+5. `scanner/domain_context.py` optionally summarizes safe, top-level project metadata into `domain_context.json` for later AI phases.
+6. `scanner/triage.py` deduplicates findings by `rule_id + file + line`, sorts them from `critical` to `low`, and emits the structured finding summary.
+7. `scanner/narrative.py` optionally adds a short AI risk narrative and writes `narrative-findings.json`.
+8. `scanner/comment.py` can render the markdown comment locally in dry-run mode, then uses `PyGithub` and `GITHUB_TOKEN` to upsert that same body to the pull request.
+9. If any finding is `critical`, the comment step exits non-zero so the GitHub Action fails. With branch protection enabled for this check, the PR is blocked from merging.
 
 ## Modular Usage
 
@@ -184,6 +187,9 @@ The empty tree SHA (`4b825dc...`) is used as the base so every file in HEAD appe
 
 ```bash
 docker compose run --rm security-gate \
+  python scanner/domain_context.py --repo-root . --output domain_context.json
+
+docker compose run --rm security-gate \
   python scanner/run_scan.py \
     --mode local \
     --rules rules \
@@ -201,7 +207,7 @@ docker compose run --rm security-gate \
   python scanner/comment.py --input narrative-findings.json --dry-run --output comment-preview.md
 ```
 
-For AI narrative smoke testing, copy `.env.ai.example` to `.env.ai`, add a provider key, and re-run the narrative step. Docker picks up `.env.ai` automatically via `compose.yaml`. If `.env.ai` is absent or contains no key, the narrative step still succeeds and writes `narrative: null`.
+For AI smoke testing, copy `.env.ai.example` to `.env.ai`, add a provider key, and re-run the domain context or narrative step. Docker picks up `.env.ai` automatically via `compose.yaml`. If `.env.ai` is absent or contains no key, the AI steps still succeed with fallback output.
 
 ## Why This Is Useful
 

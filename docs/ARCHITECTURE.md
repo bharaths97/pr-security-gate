@@ -7,6 +7,7 @@
 - Implemented and live-validated: optional Semgrep Cloud backend selection through the reusable workflow
 - Implemented: triage, deduplication, severity grouping, and PR comment rendering
 - Implemented: first validated multi-language rule wave with 21 rules across Python, JavaScript/TypeScript, Go, and Java
+- Implemented locally: optional AI domain context artifact for later enrichment phases
 - Implemented: live consumer-repo validation
 - Implemented: local-vs-cloud tradeoff documentation
 - Planned: deeper rule expansion
@@ -34,6 +35,10 @@ Both paths normalize their raw output into the same payload contract before tria
 
 `scanner/triage.py` normalizes severity, deduplicates results, sorts them by priority, and prepares a structured JSON payload for reporting.
 
+### Domain Context Stage
+
+`scanner/domain_context.py` reads safe, top-level project metadata and writes `domain_context.json`. The artifact is generated before scanning and cached when provider-backed generation succeeds. If no provider key is configured, no safe files exist, or the provider fails, it writes an unknown fallback context and the workflow continues.
+
 ### Narrative Stage
 
 `scanner/narrative.py` reads `triaged-findings.json`, optionally generates a short PR-level risk narrative with Anthropic or OpenAI, and writes `narrative-findings.json`. The reusable workflow controls provider selection with `ai-provider` and model selection with `anthropic-model` and `openai-model`. If no matching provider key is configured, findings are empty, or the provider call fails, it writes `narrative: null` and the workflow continues normally.
@@ -55,8 +60,9 @@ Both paths normalize their raw output into the same payload contract before tria
 1. Pull request event starts the workflow.
 2. The caller repository is checked out for scanning, and the configured PR Security Gate repository is checked out for shared workflow assets.
 3. Changed files are identified with `git diff`.
-4. The selected Semgrep backend runs against the pull request context.
-5. Findings are normalized and prioritized.
-6. An optional AI risk narrative is generated from the triaged findings.
-7. A markdown comment is rendered and posted to the pull request.
-8. The workflow fails when a critical finding exists.
+4. Optional domain context is generated from safe project metadata.
+5. The selected Semgrep backend runs against the pull request context.
+6. Findings are normalized and prioritized.
+7. An optional AI risk narrative is generated from the triaged findings.
+8. A markdown comment is rendered and posted to the pull request.
+9. The workflow fails when a critical finding exists.

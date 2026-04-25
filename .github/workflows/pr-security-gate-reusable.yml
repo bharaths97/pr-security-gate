@@ -32,7 +32,7 @@ on:
         description: OpenAI model used when OpenAI is selected.
         required: false
         type: string
-        default: gpt-4o
+        default: gpt-4o-mini
     secrets:
       github-token:
         required: true
@@ -79,6 +79,35 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r .pr-security-gate/requirements.txt
+
+      - name: Restore domain context cache
+        id: domain-context-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: domain_context.json
+          key: domain-context-${{ github.event.pull_request.base.ref }}-${{ hashFiles('README*', 'Dockerfile', 'compose.yaml', 'compose.yml', 'docker-compose.yaml', 'docker-compose.yml', 'package.json', 'requirements*.txt', 'go.mod', 'pom.xml', 'Cargo.toml', 'pyproject.toml', '.env.example', '*.yaml', '*.yml', '*.toml', '*.json') }}
+
+      - name: Generate domain context
+        id: domain-context
+        if: steps.domain-context-cache.outputs.cache-hit != 'true'
+        env:
+          AI_PROVIDER: ${{ inputs.ai-provider }}
+          ANTHROPIC_API_KEY: ${{ secrets.anthropic-api-key }}
+          ANTHROPIC_MODEL: ${{ inputs.anthropic-model }}
+          OPENAI_API_KEY: ${{ secrets.openai-api-key }}
+          OPENAI_MODEL: ${{ inputs.openai-model }}
+        run: |
+          python .pr-security-gate/scanner/domain_context.py \
+            --repo-root . \
+            --output domain_context.json
+          python -c "import json; print('cacheable=' + str(json.load(open('domain_context.json')).get('generated') is True).lower())" >> "$GITHUB_OUTPUT"
+
+      - name: Save domain context cache
+        if: steps.domain-context-cache.outputs.cache-hit != 'true' && steps.domain-context.outputs.cacheable == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: domain_context.json
+          key: ${{ steps.domain-context-cache.outputs.cache-primary-key }}
 
       - name: Run scoped Semgrep scan
         env:
