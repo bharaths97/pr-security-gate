@@ -33,15 +33,19 @@ Both paths normalize their raw output into the same payload contract before tria
 
 ### Triage Stage
 
-`scanner/triage.py` normalizes severity, deduplicates results, sorts them by priority, and prepares a structured JSON payload for reporting.
+`scanner/triage.py` normalizes severity, deduplicates results, sorts them by priority, preserves Semgrep `extra.lines` snippets when present, and prepares a structured JSON payload for reporting.
+
+### Prompt Management Stage
+
+AI prompt content lives in `prompts/*.toml` instead of being hardcoded in Python. `scanner/prompt_loader.py` loads and validates those files, applies a prompt-specific variable allowlist, sanitizes interpolated values, and caches parsed prompts for reuse within a job.
 
 ### Domain Context Stage
 
-`scanner/domain_context.py` reads safe, top-level project metadata and writes `domain_context.json`. The artifact is generated before scanning and cached when provider-backed generation succeeds. If no provider key is configured, no safe files exist, or the provider fails, it writes an unknown fallback context and the workflow continues.
+`scanner/domain_context.py` reads safe, top-level project metadata and writes `domain_context.json`. It builds provider prompts through the shared prompt loader instead of inline strings. The artifact is generated before scanning and cached when provider-backed generation succeeds. If no provider key is configured, no safe files exist, the prompt file is invalid, or the provider fails, it writes an unknown fallback context and the workflow continues.
 
 ### Narrative Stage
 
-`scanner/narrative.py` reads `triaged-findings.json`, optionally generates a short PR-level risk narrative with Anthropic or OpenAI, and writes `narrative-findings.json`. The reusable workflow controls provider selection with `ai-provider` and model selection with `anthropic-model` and `openai-model`. If no matching provider key is configured, findings are empty, or the provider call fails, it writes `narrative: null` and the workflow continues normally.
+`scanner/narrative.py` reads `triaged-findings.json`, optionally generates a short PR-level risk narrative with Anthropic or OpenAI, and writes `narrative-findings.json`. The reusable workflow controls provider selection with `ai-provider` and model selection with `anthropic-model` and `openai-model`. Prompt content is loaded from `prompts/narrative.toml` through the shared loader. If no matching provider key is configured, findings are empty, the prompt file is invalid, or the provider call fails, it writes `narrative: null` and the workflow continues normally.
 
 ### Comment Stage
 

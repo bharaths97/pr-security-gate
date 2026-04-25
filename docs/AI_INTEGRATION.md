@@ -11,6 +11,7 @@ The AI roadmap extends that pipeline in stages so the project gains better revie
 - The findings table and critical-failure gate are implemented
 - Phase 1 risk narrative is implemented and validated as an optional enrichment step
 - Phase 2 domain context is implemented locally as a setup artifact for later AI phases
+- AI prompts are centralized under `prompts/*.toml` and rendered through a shared allowlist-based loader
 - If no AI provider key is present or a provider call fails, the workflow falls back to the normal comment without weakening the gate
 
 ## Phase 1 Output
@@ -49,6 +50,12 @@ If a provider key is available, the file contains a compact summary of applicati
 Phase 2 does not change the PR comment or merge-blocking behavior yet. It prepares context for later fix-suggestion, terrain, and verification phases.
 
 Phase 2 reuses the same provider inputs as Phase 1 — no new workflow configuration is required. The same `ai-provider`, `anthropic-api-key`, `openai-api-key`, and model inputs control both steps.
+
+## Prompt Management
+
+Prompt text is versioned separately from Python logic under `prompts/*.toml`. `scanner/prompt_loader.py` validates prompt structure, caches parsed TOML, enforces a per-prompt variable allowlist, strips control characters from injected values, and caps interpolation size before provider calls are made.
+
+That keeps prompt changes visible in isolated diffs and narrows the blast radius of prompt-injection attempts carried through finding text or repository metadata. If a prompt file is missing or malformed, the AI step falls back the same way it would on provider failure and the workflow still continues.
 
 ## Planned Rollout
 
