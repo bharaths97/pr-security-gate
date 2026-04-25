@@ -31,7 +31,7 @@ Private working notes are kept in a local gitignored `.internal/` directory and 
 - Completed: live end-to-end consumer-repo validation in both local and Semgrep Cloud modes
 - Completed: optional AI risk narrative via Anthropic or OpenAI, validated locally and in GitHub Actions
 - Completed: optional AI domain context artifact implemented and wired into the reusable workflow for later enrichment phases
-- Implemented locally: optional AI finding enrichment step now generates `enriched-findings.json`, feeds enriched text into the PR narrative, and prefers enriched text in the comment table
+- Completed: optional AI finding enrichment step now generates `enriched-findings.json`, feeds enriched text into the PR narrative, prefers enriched text in the comment table, and has been validated in GitHub Actions
 - Planned: pin Actions by SHA, add real PR evidence, and keep expanding the rule library beyond the current first wave
 
 ## Project Layout

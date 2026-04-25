@@ -11,7 +11,7 @@ The AI roadmap extends that pipeline in stages so the project gains better revie
 - The findings table and critical-failure gate are implemented
 - Phase 1 risk narrative is implemented and validated as an optional enrichment step
 - Phase 2 domain context is implemented locally as a setup artifact for later AI phases
-- Phase 3 finding enrichment is implemented locally and wired into the reusable workflow between triage and narrative
+- Phase 3 finding enrichment is implemented and validated in the reusable workflow between triage and narrative
 - AI prompts are centralized under `prompts/*.toml` and rendered through a shared allowlist-based loader
 - If no AI provider key is present or a provider call fails, the workflow falls back to the normal comment without weakening the gate
 

@@ -8,7 +8,7 @@
 - Implemented: triage, deduplication, severity grouping, and PR comment rendering
 - Implemented: first validated multi-language rule wave with 21 rules across Python, JavaScript/TypeScript, Go, and Java
 - Implemented locally: optional AI domain context artifact for later enrichment phases
-- Implemented locally: optional AI finding enrichment step between triage and narrative
+- Implemented and validated: optional AI finding enrichment step between triage and narrative
 - Implemented: live consumer-repo validation
 - Implemented: local-vs-cloud tradeoff documentation
 - Planned: deeper rule expansion
