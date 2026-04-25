@@ -40,9 +40,9 @@ def build_table(findings: list[dict[str, Any]]) -> str:
                 severity=finding["severity"].upper(),
                 file=finding["file"],
                 line=finding["line"],
-                message=escape_pipes(finding["finding"]),
+                message=escape_pipes(preferred_finding_text(finding)),
                 cwe=escape_pipes(finding["cwe"]),
-                fix=escape_pipes(finding["fix_suggestion"]),
+                fix=escape_pipes(preferred_fix_text(finding)),
             )
         )
     return "\n".join([header, *rows])
@@ -50,6 +50,14 @@ def build_table(findings: list[dict[str, Any]]) -> str:
 
 def escape_pipes(value: str) -> str:
     return str(value).replace("|", "\\|").replace("\n", " ")
+
+
+def preferred_finding_text(finding: dict[str, Any]) -> str:
+    return str(finding.get("enriched_finding") or finding.get("finding", ""))
+
+
+def preferred_fix_text(finding: dict[str, Any]) -> str:
+    return str(finding.get("enriched_fix") or finding.get("fix_suggestion", ""))
 
 
 def format_blockquote(text: str) -> list[str]:

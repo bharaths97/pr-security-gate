@@ -11,9 +11,11 @@ __pycache__/
 scanner/__pycache__/
 *.pyc
 *.log
-comment-preview.md
+comment-*.md
 scan-results.json
-triaged-findings.json
+triaged-findings*.json
 narrative-findings.json
+*enriched*.json
+terrain-findings.json
 domain_context.json
 .pytest_cache/

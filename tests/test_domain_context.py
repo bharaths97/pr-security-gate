@@ -21,6 +21,7 @@ class DomainContextTests(unittest.TestCase):
             (repo_root / "triaged-findings.json").write_text("{}", encoding="utf-8")
             (repo_root / "narrative-findings.json").write_text("{}", encoding="utf-8")
             (repo_root / "domain_context.json").write_text("{}", encoding="utf-8")
+            (repo_root / "enriched-findings.json").write_text("{}", encoding="utf-8")
             (repo_root / ".pr-security-gate").mkdir()
             (repo_root / ".pr-security-gate" / "README.md").write_text("scanner docs", encoding="utf-8")
 

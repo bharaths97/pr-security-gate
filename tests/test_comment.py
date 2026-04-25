@@ -66,6 +66,22 @@ class CommentTests(unittest.TestCase):
         self.assertNotIn("This text should not render.", body)
         self.assertIn("No security findings were detected in the changed files.", body)
 
+    def test_build_table_prefers_enriched_fields_when_present(self) -> None:
+        payload = dict(BASE_PAYLOAD)
+        payload["findings"] = [
+            {
+                **BASE_PAYLOAD["findings"][0],
+                "enriched_finding": "Attacker-controlled input reaches a shell execution path.",
+                "enriched_fix": "Validate the helper input and remove shell=True from the subprocess call.",
+            }
+        ]
+
+        body = comment.build_comment_body(payload)
+
+        self.assertIn("Attacker-controlled input reaches a shell execution path.", body)
+        self.assertIn("remove shell=True", body)
+        self.assertNotIn("Command injection risk in support helper.", body)
+
     def test_dry_run_with_critical_findings_returns_failing_exit_code(self) -> None:
         with TemporaryDirectory() as temp_dir:
             input_path = Path(temp_dir) / "narrative-findings.json"
