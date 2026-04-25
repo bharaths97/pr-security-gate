@@ -8,7 +8,8 @@
 - Implemented: triage, deduplication, severity grouping, and PR comment rendering
 - Implemented: first validated multi-language rule wave with 21 rules across Python, JavaScript/TypeScript, Go, and Java
 - Implemented: live consumer-repo validation
-- Planned: deeper rule expansion and follow-up documentation of local-vs-cloud tradeoffs
+- Implemented: local-vs-cloud tradeoff documentation
+- Planned: deeper rule expansion
 
 ## Components
 

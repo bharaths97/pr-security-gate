@@ -31,6 +31,12 @@ The reusable workflow uses an explicit `scan-mode` input instead of auto-detecti
 
 This keeps the workflow behavior predictable during rollout, demos, and debugging.
 
+### Local Vs Cloud Tradeoff
+
+Local mode is self-contained and easy to demo because it uses the custom rules in this repository and scans only changed source files. Its coverage is limited by the local rule library.
+
+Cloud mode uses Semgrep AppSec Platform through `semgrep ci`, so it can apply broader managed rules and repository policy. It requires `SEMGREP_APP_TOKEN` and runs with Semgrep Cloud's repository-aware behavior, which is why the PR comment describes cloud scope separately from local changed-file scope.
+
 ### Fail Only on Critical Findings
 
 The workflow posts all findings to the pull request, but it only fails the check when a finding is marked `critical`. This creates a practical balance between visibility and enforcement.
@@ -89,5 +95,4 @@ This project uses the `pull_request` event, not `pull_request_target`, because t
 
 - Pin GitHub Actions by commit SHA
 - Expand beyond the current 21 local custom rules and include more obscure vulnerability patterns
-- Document Semgrep Cloud tradeoffs against local custom-rule mode using the validated consumer-repo run
 - Add screenshots from a real PR run

@@ -9,7 +9,7 @@ The AI roadmap extends that pipeline in stages so the project gains better revie
 
 - The reusable workflow is working end to end
 - The findings table and critical-failure gate are implemented
-- Phase 1 risk narrative is implemented as an optional enrichment step
+- Phase 1 risk narrative is implemented and validated as an optional enrichment step
 - If no AI provider key is present or a provider call fails, the workflow falls back to the normal comment without weakening the gate
 
 ## Phase 1 Output
