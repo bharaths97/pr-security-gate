@@ -7,6 +7,9 @@ services:
     working_dir: /app
     volumes:
       - .:/app
+    env_file:
+      - path: .env.ai
+        required: false
     environment:
       HOME: /tmp/semgrep-home
       SEMGREP_SETTINGS_FILE: /tmp/semgrep-home/settings.yml

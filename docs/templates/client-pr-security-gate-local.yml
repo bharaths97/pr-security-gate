@@ -14,5 +14,8 @@ jobs:
     with:
       security-gate-ref: main
       scan-mode: local
+      ai-provider: auto
     secrets:
       github-token: ${{ secrets.GITHUB_TOKEN }}
+      anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+      openai-api-key: ${{ secrets.OPENAI_API_KEY }}

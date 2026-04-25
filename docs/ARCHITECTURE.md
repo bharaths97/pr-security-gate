@@ -33,9 +33,13 @@ Both paths normalize their raw output into the same payload contract before tria
 
 `scanner/triage.py` normalizes severity, deduplicates results, sorts them by priority, and prepares a structured JSON payload for reporting.
 
+### Narrative Stage
+
+`scanner/narrative.py` reads `triaged-findings.json`, optionally generates a short PR-level risk narrative with Anthropic or OpenAI, and writes `narrative-findings.json`. The reusable workflow controls provider selection with `ai-provider` and model selection with `anthropic-model` and `openai-model`. If no matching provider key is configured, findings are empty, or the provider call fails, it writes `narrative: null` and the workflow continues normally.
+
 ### Comment Stage
 
-`scanner/comment.py` renders a markdown table for the pull request and can also preview that output locally in dry-run mode.
+`scanner/comment.py` renders the markdown findings table for the pull request, includes the optional narrative blockquote when present, and can also preview that output locally in dry-run mode.
 
 ### Detection Logic
 
@@ -52,5 +56,6 @@ Both paths normalize their raw output into the same payload contract before tria
 3. Changed files are identified with `git diff`.
 4. The selected Semgrep backend runs against the pull request context.
 5. Findings are normalized and prioritized.
-6. A markdown comment is rendered and posted to the pull request.
-7. The workflow fails when a critical finding exists.
+6. An optional AI risk narrative is generated from the triaged findings.
+7. A markdown comment is rendered and posted to the pull request.
+8. The workflow fails when a critical finding exists.

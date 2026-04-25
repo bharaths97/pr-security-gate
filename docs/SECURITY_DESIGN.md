@@ -17,7 +17,7 @@ This project is designed to show both application security scanning and CI/CD se
 
 ### Scan Only Changed Files
 
-`scanner/run_scan.py` scopes the pull request context by using `git diff` between the PR base and head SHAs. In local mode, it scans only matching changed source files with the repository's custom Semgrep rules. In cloud mode, it runs `semgrep ci` with the repository's Semgrep AppSec Platform configuration while preserving the same downstream triage contract.
+`scanner/run_scan.py` scopes the pull request context by using `git diff` between the PR base and head SHAs. It uses a two-commit diff (`base..head`) rather than a three-dot merge-base diff (`base...head`) — the two-dot form does a direct comparison between any two git objects, which works correctly with real PR SHAs in CI and also supports the empty tree SHA used for local smoke testing. In local mode, it scans only matching changed source files with the repository's custom Semgrep rules. In cloud mode, it runs `semgrep ci` with the repository's Semgrep AppSec Platform configuration while preserving the same downstream triage contract.
 
 This keeps results focused on the pull request instead of turning the workflow into a noisy full-repository dump.
 
@@ -88,7 +88,6 @@ This project uses the `pull_request` event, not `pull_request_target`, because t
 ## Future Hardening
 
 - Pin GitHub Actions by commit SHA
-- Add explicit automated rule tests
 - Expand beyond the current 21 local custom rules and include more obscure vulnerability patterns
 - Document Semgrep Cloud tradeoffs against local custom-rule mode using the validated consumer-repo run
 - Add screenshots from a real PR run
