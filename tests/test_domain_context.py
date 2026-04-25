@@ -1,4 +1,5 @@
 import json
+import tomllib
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -63,6 +64,21 @@ class DomainContextTests(unittest.TestCase):
         self.assertFalse(context["generated"])
         self.assertEqual(context["reason"], "provider_failed")
 
+    def test_malformed_prompt_falls_back_to_unknown_context(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            (repo_root / "README.md").write_text("# Demo app", encoding="utf-8")
+
+            with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}, clear=True):
+                with patch(
+                    "scanner.domain_context.prompt_loader.render",
+                    side_effect=tomllib.TOMLDecodeError("bad prompt", "x", 0),
+                ):
+                    context = domain_context.generate_domain_context(repo_root)
+
+        self.assertFalse(context["generated"])
+        self.assertEqual(context["reason"], "provider_failed")
+
     def test_successful_generation_normalizes_context(self) -> None:
         response = json.dumps(
             {
@@ -115,6 +131,11 @@ class DomainContextTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertFalse(written["generated"])
         self.assertEqual(written["reason"], "no_provider")
+
+    def test_build_system_prompt_mentions_user_controlled_strings(self) -> None:
+        prompt = domain_context.build_system_prompt()
+
+        self.assertIn("may contain user-controlled strings", prompt)
 
 
 if __name__ == "__main__":

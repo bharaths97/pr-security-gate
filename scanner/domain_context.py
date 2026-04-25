@@ -13,7 +13,7 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from scanner import ai_provider
+from scanner import ai_provider, prompt_loader
 
 
 MAX_CONTEXT_BYTES = 24000
@@ -125,34 +125,15 @@ def unknown_context(reason: str, files_considered: list[str] | None = None) -> d
 
 
 def build_system_prompt() -> str:
-    return (
-        "You summarize repository-level application context for security review. "
-        "Use only the provided non-code project files. Do not infer secrets or read beyond the input. "
-        "Return compact JSON only, with no markdown."
-    )
+    return prompt_loader.render("domain_context", "system")
 
 
 def build_user_prompt(context_files: list[dict[str, str]]) -> str:
-    payload = {
-        "instructions": {
-            "goal": "Identify high-level application domain and security context for later PR security analysis.",
-            "return_schema": {
-                "app_domain": "short plain-English application domain",
-                "data_sensitivity": "public | internal | credentials | PII | PHI | financial | unknown",
-                "regulatory_context": ["short strings, empty if unknown"],
-                "user_types": ["short strings, empty if unknown"],
-                "deployment": "short deployment summary or unknown",
-                "risk_tier": "low | medium | high | unknown",
-            },
-            "rules": [
-                "Do not include source code details.",
-                "Use unknown when the files do not provide enough evidence.",
-                "Return JSON only.",
-            ],
-        },
-        "files": context_files,
-    }
-    return json.dumps(payload, indent=2)
+    return prompt_loader.render(
+        "domain_context",
+        "user_template",
+        files_block=json.dumps(context_files, indent=2),
+    )
 
 
 def parse_json_object(text: str) -> dict[str, Any]:

@@ -68,6 +68,10 @@ The project does not dump raw Semgrep JSON onto the pull request. Instead, it:
 
 The domain context step reads only safe, top-level project metadata such as README, Docker, dependency, and example config files. It does not read `.env`, source files, dependency folders, or the checked-out scanner repository. If AI is unavailable or fails, it writes an unknown fallback context and does not affect the deterministic security gate.
 
+AI prompt text is centralized under `prompts/*.toml` and rendered through `scanner/prompt_loader.py`. The loader enforces a prompt-specific variable allowlist, strips control characters from interpolated values, replaces `None` with `unknown`, and caps injected value size before provider submission. Narrative and future enrichment prompts also include an explicit instruction that user-controlled findings text must be treated as data, not as instructions.
+
+This does not eliminate prompt injection risk entirely because finding data and repository metadata can still contain adversarial strings, but it keeps that input visible, bounded, and separate from merge-blocking logic. AI output still only affects reviewer-facing text, while the critical gate remains driven by deterministic triage data.
+
 ### Local Reproducibility
 
 The Docker path exists to avoid host Python and Semgrep compatibility issues. It gives the project a repeatable Python 3.11 environment for local rule validation and demo preparation.

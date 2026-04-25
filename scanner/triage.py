@@ -56,7 +56,7 @@ def normalize_finding(result: dict[str, Any]) -> dict[str, Any]:
     metadata = extra.get("metadata", {})
     severity = normalize_severity(metadata.get("severity") or extra.get("severity"))
     start = result.get("start", {})
-    return {
+    finding = {
         "rule_id": result.get("check_id", "unknown-rule"),
         "severity": severity,
         "file": result.get("path", ""),
@@ -65,6 +65,10 @@ def normalize_finding(result: dict[str, Any]) -> dict[str, Any]:
         "cwe": normalize_cwe(metadata.get("cwe")),
         "fix_suggestion": metadata.get("fix", "Review and remediate this issue."),
     }
+    lines = normalize_lines(extra.get("lines"))
+    if lines is not None:
+        finding["lines"] = lines
+    return finding
 
 
 def normalize_cwe(value: Any) -> str:
@@ -75,6 +79,16 @@ def normalize_cwe(value: Any) -> str:
         return "N/A"
     cleaned = str(value).strip()
     return cleaned or "N/A"
+
+
+def normalize_lines(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, list):
+        text = "\n".join(str(item) for item in value)
+    else:
+        text = str(value)
+    return text if text.strip() else None
 
 
 def deduplicate_findings(results: list[dict[str, Any]]) -> list[dict[str, Any]]:

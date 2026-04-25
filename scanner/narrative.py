@@ -13,7 +13,7 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from scanner import ai_provider
+from scanner import ai_provider, prompt_loader
 
 
 MAX_PROMPT_FINDINGS = 25
@@ -37,42 +37,16 @@ def build_output_payload(payload: dict[str, Any], narrative: str | None) -> dict
 
 
 def build_system_prompt() -> str:
-    return (
-        "You are generating a concise security summary for a pull request based ONLY on the provided scan results. "
-        "Do not infer or invent issues beyond the input. "
-        "Write 2–4 sentences in plain English for a human reviewer, focusing on overall security risk and impact rather than listing individual findings. "
-        "If issues are present, briefly characterize severity (e.g., low, moderate, high) and highlight the most important remediation priority if one clearly stands out. "
-        "If no meaningful security issues are found, explicitly state that the changes appear low risk. "
-        "Avoid hype, speculation, and unnecessary detail. Do not use markdown, bullets, or headings."
-    )
+    return prompt_loader.render("narrative", "system")
 
 
-def build_user_prompt(payload: dict[str, Any]) -> str:
-    summary = payload.get("summary", {})
-    counts = summary.get("counts", {})
-    source = payload.get("source", {})
+def build_findings_block(payload: dict[str, Any]) -> str:
     findings = payload.get("findings", [])
     prompt_findings = findings[:MAX_PROMPT_FINDINGS]
-
-    metadata_lines = [
-        f"Repository: {os.getenv('GITHUB_REPOSITORY', 'unknown')}",
-        f"PR title: {os.getenv('PR_TITLE', 'unknown')}",
-        f"PR branch: {os.getenv('PR_BRANCH', 'unknown')}",
-        (
-            "Summary counts: "
-            f"critical={counts.get('critical', 0)}, "
-            f"high={counts.get('high', 0)}, "
-            f"medium={counts.get('medium', 0)}, "
-            f"low={counts.get('low', 0)}"
-        ),
-        f"Scanned files: {len(source.get('scanned_files', []))}",
-        f"Changed files: {len(source.get('changed_files', []))}",
-        "",
-        "Findings:",
-    ]
+    lines = []
 
     for finding in prompt_findings:
-        metadata_lines.append(
+        lines.append(
             "- {severity} | {file}:{line} | {message} | CWE: {cwe} | Suggested fix: {fix}".format(
                 severity=str(finding.get("severity", "unknown")).upper(),
                 file=finding.get("file", ""),
@@ -84,17 +58,31 @@ def build_user_prompt(payload: dict[str, Any]) -> str:
         )
 
     if len(findings) > len(prompt_findings):
-        metadata_lines.append(
+        lines.append(
             f"- Additional findings omitted from prompt for brevity: {len(findings) - len(prompt_findings)}"
         )
 
-    metadata_lines.extend(
-        [
-            "",
-            "Return only the reviewer-facing summary text.",
-        ]
+    return "\n".join(lines)
+
+
+def build_user_prompt(payload: dict[str, Any]) -> str:
+    summary = payload.get("summary", {})
+    counts = summary.get("counts", {})
+    source = payload.get("source", {})
+    return prompt_loader.render(
+        "narrative",
+        "user_template",
+        github_repository=os.getenv("GITHUB_REPOSITORY", "unknown"),
+        pr_title=os.getenv("PR_TITLE", "unknown"),
+        pr_branch=os.getenv("PR_BRANCH", "unknown"),
+        critical=counts.get("critical", 0),
+        high=counts.get("high", 0),
+        medium=counts.get("medium", 0),
+        low=counts.get("low", 0),
+        scanned_files=len(source.get("scanned_files", [])),
+        changed_files=len(source.get("changed_files", [])),
+        findings_block=build_findings_block(payload),
     )
-    return "\n".join(metadata_lines)
 
 
 def one_line_text(value: Any) -> str:

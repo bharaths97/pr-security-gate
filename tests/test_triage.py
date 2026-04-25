@@ -41,6 +41,22 @@ class TriageTests(unittest.TestCase):
         self.assertNotIn("score", finding)
         self.assertEqual(finding["cwe"], "CWE-79: Cross-site Scripting")
 
+    def test_normalize_finding_passes_through_lines(self) -> None:
+        finding = triage.normalize_finding(
+            {
+                "check_id": "rule-2",
+                "path": "src/config.py",
+                "start": {"line": 9},
+                "extra": {
+                    "message": "Hardcoded secret.",
+                    "lines": 'API_KEY = "hardcoded"',
+                    "metadata": {},
+                },
+            }
+        )
+
+        self.assertEqual(finding["lines"], 'API_KEY = "hardcoded"')
+
 
 if __name__ == "__main__":
     unittest.main()
