@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Post triaged findings to a pull request as a markdown comment."""
+"""Post findings to a pull request as a markdown comment."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ COMMENT_MARKER = "<!-- pr-security-gate -->"
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", required=True, help="Triaged findings JSON path.")
+    parser.add_argument("--input", required=True, help="Narrative findings JSON path.")
     parser.add_argument(
         "--output",
         help="Optional path to write the rendered markdown comment body.",
@@ -52,13 +52,20 @@ def escape_pipes(value: str) -> str:
     return str(value).replace("|", "\\|").replace("\n", " ")
 
 
+def format_blockquote(text: str) -> list[str]:
+    return [f"> {line}".rstrip() for line in str(text).splitlines() if line.strip()]
+
+
 def build_comment_body(payload: dict[str, Any]) -> str:
     summary = payload["summary"]
     findings = payload["findings"]
+    narrative = payload.get("narrative")
     counts = summary["counts"]
-    scanned_files = payload["source"]["scanned_files"]
-    changed_files = payload["source"]["changed_files"]
+    source = payload["source"]
+    scanned_files = source["scanned_files"]
+    changed_files = source["changed_files"]
     changed_file_count = len(changed_files) or len(scanned_files)
+    is_cloud = source.get("scanner", "").startswith("semgrep-cloud")
     status_line = (
         "Status: failing because at least one critical finding was detected."
         if summary["has_critical"]
@@ -69,18 +76,31 @@ def build_comment_body(payload: dict[str, Any]) -> str:
         COMMENT_MARKER,
         "## PR Security Gate Results",
         "",
-        status_line,
-        "",
-        (
-            f"Scanned `{len(scanned_files)}` changed source file(s) "
-            f"out of `{changed_file_count}` changed file(s)."
-        ),
-        (
-            f"Findings: critical `{counts['critical']}`, high `{counts['high']}`, "
-            f"medium `{counts['medium']}`, low `{counts['low']}`."
-        ),
-        "",
     ]
+
+    if findings and narrative:
+        lines.extend(format_blockquote(narrative))
+        lines.append("")
+
+    lines.extend(
+        [
+            status_line,
+            "",
+            (
+                f"Scanned full repository (`{changed_file_count}` changed file(s) in this PR)."
+                if is_cloud
+                else (
+                    f"Scanned `{len(scanned_files)}` changed source file(s) "
+                    f"out of `{changed_file_count}` changed file(s)."
+                )
+            ),
+            (
+                f"Findings: critical `{counts['critical']}`, high `{counts['high']}`, "
+                f"medium `{counts['medium']}`, low `{counts['low']}`."
+            ),
+            "",
+        ]
+    )
 
     if findings:
         lines.append(build_table(findings))

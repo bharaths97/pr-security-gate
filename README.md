@@ -29,6 +29,7 @@ Private working notes are kept in a local gitignored `.internal/` directory and 
 - Completed: local validation of 21 custom Semgrep rules across Python, JavaScript/TypeScript, Go, and Java
 - Completed: local markdown preview for the PR comment body
 - Completed: live end-to-end consumer-repo validation in both local and Semgrep Cloud modes
+- Completed: optional AI risk narrative via Anthropic or OpenAI — degrades gracefully when no key is present
 - Planned: pin Actions by SHA, add real PR evidence, and keep expanding the rule library beyond the current first wave
 
 ## Project Layout
@@ -36,10 +37,12 @@ Private working notes are kept in a local gitignored `.internal/` directory and 
 ```text
 .github/workflows/pr-security-gate-reusable.yml
 .github/workflows/security-scan.yml
+.github/workflows/test.yml
 docs/
 rules/
 scanner/run_scan.py
 scanner/triage.py
+scanner/narrative.py
 scanner/comment.py
 tests/vulnerable_samples/
 requirements.txt
@@ -94,9 +97,9 @@ To opt into Semgrep Cloud mode, store `SEMGREP_APP_TOKEN` in the consumer reposi
 ```yaml
 jobs:
   pr-security-gate:
-    uses: bharaths97/pr-security-gate/.github/workflows/pr-security-gate-reusable.yml@semgrep-cloud-scan
+    uses: bharaths97/pr-security-gate/.github/workflows/pr-security-gate-reusable.yml@main
     with:
-      security-gate-ref: semgrep-cloud-scan
+      security-gate-ref: main
       scan-mode: cloud
     secrets:
       github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -138,6 +141,8 @@ Coverage themes in the current rule packs:
 
 ## Sample PR Comment Excerpt
 
+Without AI narrative:
+
 ```markdown
 ## PR Security Gate Results
 
@@ -156,13 +161,46 @@ Findings: critical `4`, high `14`, medium `3`, low `0`.
 > Critical findings detected. This check fails so branch protection can block the merge until remediated.
 ```
 
+With AI narrative (`ai-provider: auto` and a provider key configured):
+
+```markdown
+## PR Security Gate Results
+
+> This PR introduces a hardcoded credential and an unsafe shell execution path. The critical secret exposure is the immediate remediation priority — it should be rotated and moved to a secret manager before merge. The command injection risk in the JavaScript helper is high severity and should also be addressed in this change.
+
+Status: failing because at least one critical finding was detected.
+
+Scanned `21` changed source file(s) out of `21` changed file(s).
+Findings: critical `4`, high `14`, medium `3`, low `0`.
+...
+```
+
 ## Local Preview
 
-Render the exact markdown body locally without posting to GitHub:
+Run the full pipeline locally in Docker without posting to GitHub.
+
+The empty tree SHA (`4b825dc...`) is used as the base so every file in HEAD appears as a new addition — this makes the vulnerable samples show up in the diff for local smoke testing regardless of when they were first committed:
 
 ```bash
-python scanner/comment.py --input triaged-findings.json --dry-run --output comment-preview.md
+docker compose run --rm security-gate \
+  python scanner/run_scan.py \
+    --mode local \
+    --rules rules \
+    --base-sha 4b825dc642cb6eb9a060e54bf8d69288fbee4904 \
+    --head-sha $(git rev-parse HEAD) \
+    --output scan-results.json
+
+docker compose run --rm security-gate \
+  python scanner/triage.py --input scan-results.json --output triaged-findings.json
+
+docker compose run --rm security-gate \
+  python scanner/narrative.py --input triaged-findings.json --output narrative-findings.json
+
+docker compose run --rm security-gate \
+  python scanner/comment.py --input narrative-findings.json --dry-run --output comment-preview.md
 ```
+
+For AI narrative smoke testing, copy `.env.ai.example` to `.env.ai`, add a provider key, and re-run the narrative step. Docker picks up `.env.ai` automatically via `compose.yaml`. If `.env.ai` is absent or contains no key, the narrative step still succeeds and writes `narrative: null`.
 
 ## Why This Is Useful
 

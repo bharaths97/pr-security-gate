@@ -1,4 +1,7 @@
 .DS_Store
+.env
+.env.*
+!.env.ai.example
 .internal/
 .semgrep/
 .semgrep-settings.yml
@@ -11,4 +14,5 @@ scanner/__pycache__/
 comment-preview.md
 scan-results.json
 triaged-findings.json
-
+narrative-findings.json
+.pytest_cache/

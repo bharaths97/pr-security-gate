@@ -17,7 +17,7 @@ SEVERITY_RANK = {
     "low": 1,
 }
 
-SEVERITY_ORDER = ["critical", "high", "medium", "low"]
+SEVERITY_ORDER = sorted(SEVERITY_RANK, key=SEVERITY_RANK.__getitem__, reverse=True)
 SEVERITY_ALIASES = {
     "error": "high",
     "warning": "medium",
@@ -59,7 +59,6 @@ def normalize_finding(result: dict[str, Any]) -> dict[str, Any]:
     return {
         "rule_id": result.get("check_id", "unknown-rule"),
         "severity": severity,
-        "score": SEVERITY_RANK[severity],
         "file": result.get("path", ""),
         "line": int(start.get("line", 1)),
         "finding": extra.get("message", "Security finding detected."),
@@ -84,7 +83,7 @@ def deduplicate_findings(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
         finding = normalize_finding(result)
         key = finding_key(finding)
         existing = deduped.get(key)
-        if existing is None or finding["score"] > existing["score"]:
+        if existing is None or SEVERITY_RANK[finding["severity"]] > SEVERITY_RANK[existing["severity"]]:
             deduped[key] = finding
     return sort_findings(list(deduped.values()))
 
@@ -92,17 +91,8 @@ def deduplicate_findings(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def sort_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(
         findings,
-        key=lambda item: (-item["score"], item["file"], item["line"], item["rule_id"]),
+        key=lambda item: (-SEVERITY_RANK[item["severity"]], item["file"], item["line"], item["rule_id"]),
     )
-
-
-def group_findings_by_severity(findings: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
-    grouped = {severity: [] for severity in SEVERITY_ORDER}
-    for finding in findings:
-        grouped[finding["severity"]].append(finding)
-    for severity in SEVERITY_ORDER:
-        grouped[severity] = sort_findings(grouped[severity])
-    return grouped
 
 
 def build_summary(findings: list[dict[str, Any]]) -> dict[str, Any]:
@@ -120,11 +110,9 @@ def main() -> int:
     args = parse_args()
     payload = json.loads(Path(args.input).read_text(encoding="utf-8"))
     findings = deduplicate_findings(payload.get("results", []))
-    grouped_findings = group_findings_by_severity(findings)
     output = {
         "summary": build_summary(findings),
         "findings": findings,
-        "grouped_findings": grouped_findings,
         "source": {
             "scanner": payload.get("metadata", {}).get("scanner", "semgrep"),
             "changed_files": payload.get("paths", {}).get("changed", []),

@@ -9,7 +9,35 @@ The AI roadmap extends that pipeline in stages so the project gains better revie
 
 - The reusable workflow is working end to end
 - The findings table and critical-failure gate are implemented
-- AI augmentation is planned, but not yet implemented
+- Phase 1 risk narrative is implemented as an optional enrichment step
+- If no AI provider key is present or a provider call fails, the workflow falls back to the normal comment without weakening the gate
+
+## Phase 1 Output
+
+When a provider key is configured, the narrative appears as a blockquote above the findings table in the PR comment:
+
+```
+> This PR introduces a hardcoded credential and an unsafe shell execution path.
+> The critical secret exposure is the immediate remediation priority — it should
+> be rotated and moved to a secret manager before merge. The command injection
+> risk in the helper script is high severity and should also be addressed here.
+```
+
+If no provider key is present, the provider call fails, or findings are empty, the blockquote is omitted and the rest of the comment renders normally. The merge-blocking gate is unaffected in either case.
+
+## Phase 1 Configuration
+
+The reusable workflow exposes explicit AI controls for the PR risk narrative:
+
+| Input | Default | Behavior |
+| --- | --- | --- |
+| `ai-provider` | `auto` | Uses Anthropic when `anthropic-api-key` is present, otherwise OpenAI when `openai-api-key` is present. Use `anthropic`, `openai`, or `none` to force a choice. |
+| `anthropic-model` | `claude-sonnet-4-6` | Model used when Anthropic is selected. |
+| `openai-model` | `gpt-4o` | Model used when OpenAI is selected. |
+
+Provider keys are passed as optional workflow secrets: `anthropic-api-key` and `openai-api-key`.
+
+For local Docker smoke testing, copy `.env.ai.example` to `.env.ai` and set the same environment variables used by `scanner/narrative.py`. The `.env.ai` file is ignored by Git and is only for local validation.
 
 ## Planned Rollout
 

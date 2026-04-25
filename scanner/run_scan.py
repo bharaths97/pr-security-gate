@@ -57,7 +57,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def run_git_diff(base_sha: str, head_sha: str) -> list[str]:
-    diff_range = f"{base_sha}...{head_sha}"
+    diff_range = f"{base_sha}..{head_sha}"
     result = subprocess.run(
         ["git", "diff", "--name-only", "--diff-filter=ACMR", diff_range],
         check=True,
@@ -164,7 +164,7 @@ def run_local_scan(rules_path: str | None, files: list[str], changed_files: list
     )
 
 
-def run_cloud_scan(base_sha: str, files: list[str], changed_files: list[str]) -> dict[str, Any]:
+def run_cloud_scan(base_sha: str, changed_files: list[str]) -> dict[str, Any]:
     if not os.getenv("SEMGREP_APP_TOKEN"):
         raise SystemExit("SEMGREP_APP_TOKEN must be set when --mode cloud is used.")
 
@@ -189,7 +189,7 @@ def run_cloud_scan(base_sha: str, files: list[str], changed_files: list[str]) ->
     return normalize_scan_payload(
         payload,
         changed_files=changed_files,
-        scanned_files=files,
+        scanned_files=[],
         scanner="semgrep-cloud",
         reason="Scan completed.",
     )
@@ -218,7 +218,7 @@ def main() -> int:
             scanner_name,
         )
     elif args.mode == "cloud":
-        payload = run_cloud_scan(args.base_sha, scannable_files, changed_files)
+        payload = run_cloud_scan(args.base_sha, changed_files)
     else:
         payload = run_local_scan(args.rules, scannable_files, changed_files)
 

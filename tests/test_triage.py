@@ -38,7 +38,7 @@ class TriageTests(unittest.TestCase):
         )
 
         self.assertEqual(finding["severity"], "high")
-        self.assertEqual(finding["score"], 3)
+        self.assertNotIn("score", finding)
         self.assertEqual(finding["cwe"], "CWE-79: Cross-site Scripting")
 
 
