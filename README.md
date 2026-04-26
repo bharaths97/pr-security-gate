@@ -32,8 +32,8 @@ Private working notes are kept in a local gitignored `.internal/` directory and 
 - Completed: optional AI risk narrative via Anthropic or OpenAI, validated locally and in GitHub Actions
 - Completed: optional AI domain context artifact implemented and wired into the reusable workflow for later enrichment phases
 - Completed: optional AI finding enrichment step now generates `enriched-findings.json`, feeds enriched text into the PR narrative, prefers enriched text in the comment table, and has been validated in GitHub Actions
-- Implemented on `ai-phase4-terrain`: optional AI terrain synthesis now generates `terrain-findings.json`, classifies findings as `introduced` or `pre-existing`, adds taint-path context to the comment, and has passed local plus Docker unit validation
-- Implemented on `ai-phase5-adversarial`: optional AI adversarial verification now generates `verified-findings.json`, adds sustained or challenged reviewer context to the comment, and has passed local plus Docker unit validation
+- Completed: optional AI terrain synthesis now generates `terrain-findings.json`, classifies findings as `introduced` or `pre-existing`, adds taint-path context to the comment, and has passed local, Docker, and CareTrack validation
+- Completed: optional AI adversarial verification now generates `verified-findings.json`, adds sustained or challenged reviewer context to the comment, and has passed local, Docker, provider-backed smoke, and CareTrack validation
 - Planned: pin Actions by SHA, add real PR evidence, and keep expanding the rule library beyond the current first wave
 
 ## Project Layout

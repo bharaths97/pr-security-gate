@@ -9,8 +9,8 @@
 - Implemented: first validated multi-language rule wave with 21 rules across Python, JavaScript/TypeScript, Go, and Java
 - Implemented locally: optional AI domain context artifact for later enrichment phases
 - Implemented and validated: optional AI finding enrichment step between triage and narrative
-- Implemented on `ai-phase4-terrain`: optional terrain synthesis step between triage and enrichment, validated locally and in Docker
-- Implemented on `ai-phase5-adversarial`: optional adversarial verification step between enrichment and narrative, validated locally and in Docker
+- Implemented: optional terrain synthesis step between triage and enrichment, validated locally, in Docker, and on the live CareTrack path
+- Implemented: optional adversarial verification step between enrichment and narrative, validated locally, in Docker, with provider-backed smoke output, and on the live CareTrack path
 - Implemented: live consumer-repo validation
 - Implemented: local-vs-cloud tradeoff documentation
 - Planned: deeper rule expansion
