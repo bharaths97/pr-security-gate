@@ -102,6 +102,17 @@ class PromptLoaderTests(unittest.TestCase):
         self.assertIn("caretrack/support_tools.py", rendered)
         self.assertIn("risk_tier=high", rendered)
 
+    def test_render_adversarial_prompt_accepts_phase5_variables(self) -> None:
+        rendered = prompt_loader.render(
+            "adversarial",
+            "user_template",
+            domain_summary="risk_tier=high",
+            finding_block='{"rule_id": "rule-1"}',
+        )
+
+        self.assertIn('{"rule_id": "rule-1"}', rendered)
+        self.assertIn("risk_tier=high", rendered)
+
 
 if __name__ == "__main__":
     unittest.main()

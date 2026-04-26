@@ -33,6 +33,7 @@ Private working notes are kept in a local gitignored `.internal/` directory and 
 - Completed: optional AI domain context artifact implemented and wired into the reusable workflow for later enrichment phases
 - Completed: optional AI finding enrichment step now generates `enriched-findings.json`, feeds enriched text into the PR narrative, prefers enriched text in the comment table, and has been validated in GitHub Actions
 - Implemented on `ai-phase4-terrain`: optional AI terrain synthesis now generates `terrain-findings.json`, classifies findings as `introduced` or `pre-existing`, adds taint-path context to the comment, and has passed local plus Docker unit validation
+- Implemented on `ai-phase5-adversarial`: optional AI adversarial verification now generates `verified-findings.json`, adds sustained or challenged reviewer context to the comment, and has passed local plus Docker unit validation
 - Planned: pin Actions by SHA, add real PR evidence, and keep expanding the rule library beyond the current first wave
 
 ## Project Layout
@@ -44,6 +45,7 @@ docs/
 rules/
 scanner/ai_provider.py
 scanner/ai_enrich.py
+scanner/adversarial.py
 scanner/terrain.py
 scanner/run_scan.py
 scanner/triage.py
@@ -64,9 +66,10 @@ requirements.txt
 6. `scanner/triage.py` deduplicates findings by `rule_id + file + line`, preserves Semgrep `extra.lines` snippets for later enrichment, sorts results from `critical` to `low`, and emits the structured finding summary.
 7. `scanner/terrain.py` optionally analyzes each changed file with findings, identifies likely sources and sinks, and writes `terrain-findings.json` with `origin` and `taint_path` context when available.
 8. `scanner/ai_enrich.py` optionally generates per-finding `enriched_finding`, `enriched_fix`, and `risk_context` fields from terrain-aware findings plus optional domain context.
-9. `scanner/narrative.py` optionally adds a short AI risk narrative and writes `narrative-findings.json`. When enriched finding text exists, the narrative prompt uses that improved wording automatically.
-10. `scanner/comment.py` can render the markdown comment locally in dry-run mode, prefers enriched text in the findings table when available, separates `pre-existing` findings into a collapsed section, and then uses `PyGithub` and `GITHUB_TOKEN` to upsert that same body to the pull request.
-11. If any finding is `critical`, the comment step exits non-zero so the GitHub Action fails. With branch protection enabled for this check, the PR is blocked from merging.
+9. `scanner/adversarial.py` optionally challenges each HIGH or CRITICAL finding, writes `verified-findings.json`, and preserves graceful per-finding fallback when a provider response fails.
+10. `scanner/narrative.py` optionally adds a short AI risk narrative and writes `narrative-findings.json`. When verified findings exist, the narrative prompt can reflect adversarial verdict context automatically.
+11. `scanner/comment.py` can render the markdown comment locally in dry-run mode, prefers enriched text in the findings table when available, separates `challenged` and `pre-existing` findings into collapsed sections, and then uses `PyGithub` and `GITHUB_TOKEN` to upsert that same body to the pull request.
+12. If any finding is `critical`, the comment step exits non-zero so the GitHub Action fails. With branch protection enabled for this check, the PR is blocked from merging.
 
 ## Modular Usage
 
@@ -185,12 +188,12 @@ Findings: critical `4`, high `14`, medium `3`, low `0`.
 ...
 ```
 
-With AI enrichment plus narrative:
+With terrain, enrichment, and adversarial verification:
 
 ```markdown
 ## PR Security Gate Results
 
-> This PR introduces a new shell execution path and also touches a pre-existing unsafe query path. The new command execution issue should be remediated before merge, while the older query path should be tracked explicitly because the PR did not introduce it.
+> This PR still contains a critical shell execution path after adversarial review, while a separate high-severity query finding appears constrained by application context and has been challenged for follow-up review.
 
 Status: failing because at least one critical finding was detected.
 
@@ -199,9 +202,16 @@ Findings: critical `4`, high `14`, medium `3`, low `0`.
 
 | Severity | File | Line | Finding | Taint Path | CWE | Fix Suggestion |
 | --- | --- | --- | --- | --- | --- | --- |
-| CRITICAL<br>NEW | `caretrack/support_tools.py` | 21 | User-controlled helper input reaches a shell execution path in the support tooling. | HTTP request parameter (line 10) -> subprocess.run(..., shell=True) (line 21) | CWE-78 | Validate the helper input, avoid shell execution, and pass arguments as an explicit list instead of invoking a shell. |
-| HIGH<br>PRE-EXISTING | `caretrack/db.py` | 44 | A database query is still built from user-controlled input with string concatenation in legacy code touched by this PR. | User-controlled database parameter (line 30) -> cursor.execute(query) (line 44) | CWE-89 | Replace string-built queries with parameterized execution and keep untrusted values out of SQL text construction. |
+| CRITICAL<br>NEW | `caretrack/support_tools.py` | 21 | User-controlled helper input reaches a shell execution path in the support tooling. (Adversarial review: sustained. Some validation exists earlier in the flow, but attacker-controlled data still reaches shell execution.) | HTTP request parameter (line 10) -> subprocess.run(..., shell=True) (line 21) | CWE-78 | Validate the helper input, avoid shell execution, and pass arguments as an explicit list instead of invoking a shell. |
 ...
+
+<details>
+<summary>Challenged findings (1)</summary>
+
+| Severity | File | Line | Finding | Taint Path | CWE | Counter-Argument | Fix Suggestion |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| HIGH<br>PRE-EXISTING | `caretrack/db.py` | 44 | A database query is still built from user-controlled input with string concatenation in legacy code touched by this PR. | User-controlled database parameter (line 30) -> cursor.execute(query) (line 44) | CWE-89 | The query input is assembled from an internal enum rather than direct user input in this path, so exploitability may be limited. | Replace string-built queries with parameterized execution and keep untrusted values out of SQL text construction. |
+</details>
 ```
 
 ## Local Preview
@@ -238,13 +248,19 @@ docker compose run --rm security-gate \
     --output enriched-findings.json
 
 docker compose run --rm security-gate \
-  python scanner/narrative.py --input enriched-findings.json --output narrative-findings.json
+  python scanner/adversarial.py \
+    --input enriched-findings.json \
+    --context domain_context.json \
+    --output verified-findings.json
+
+docker compose run --rm security-gate \
+  python scanner/narrative.py --input verified-findings.json --output narrative-findings.json
 
 docker compose run --rm security-gate \
   python scanner/comment.py --input narrative-findings.json --dry-run --output comment-preview.md
 ```
 
-For AI smoke testing, copy `.env.ai.example` to `.env.ai`, add a provider key, and re-run the domain context, enrichment, or narrative step. Docker picks up `.env.ai` automatically via `compose.yaml`. If `.env.ai` is absent or contains no key, the AI steps still succeed with fallback output.
+For AI smoke testing, copy `.env.ai.example` to `.env.ai`, add a provider key, and re-run the domain context, enrichment, adversarial, or narrative step. Docker picks up `.env.ai` automatically via `compose.yaml`. If `.env.ai` is absent or contains no key, the AI steps still succeed with fallback output.
 
 ## Why This Is Useful
 

@@ -13,6 +13,7 @@ The AI roadmap extends that pipeline in stages so the project gains better revie
 - Phase 2 domain context is implemented locally as a setup artifact for later AI phases
 - Phase 3 finding enrichment is implemented and validated in the reusable workflow between triage and narrative
 - Phase 4 terrain synthesis is implemented on `ai-phase4-terrain`, validated in local plus Docker unit tests, and wires a new terrain step between triage and enrichment
+- Phase 5 adversarial verification is implemented on `ai-phase5-adversarial`, validated in local plus Docker unit tests, and wires a verifier step between enrichment and narrative
 - AI prompts are centralized under `prompts/*.toml` and rendered through a shared allowlist-based loader
 - If no AI provider key is present or a provider call fails, the workflow falls back to the normal comment without weakening the gate
 
@@ -83,6 +84,20 @@ When terrain succeeds, findings may gain:
 The PR comment can then surface a `NEW` or `PRE-EXISTING` badge in the severity column, add a `Taint Path` column when available, and move pre-existing findings into a collapsed `<details>` section. The critical gate is unchanged because it still depends only on structured severity counts.
 
 If no provider key is present, `AI_PROVIDER=none` is used, the prompt fails to load, a file cannot be read, the provider fails, or the model returns malformed JSON for a file, the workflow degrades gracefully. No-provider mode writes the original triaged findings through unchanged. Per-file failures mark only that file's findings as `origin: unknown` and continue.
+
+## Phase 5 Adversarial Verification
+
+`scanner/adversarial.py` runs after enrichment and before narrative. It reads `enriched-findings.json`, optionally combines each HIGH or CRITICAL finding with `domain_context.json`, and writes `verified-findings.json`.
+
+When verification succeeds, findings may gain:
+
+- `verdict` with `sustained` or `downgraded`
+- `counter_argument`
+- `adversarial_confidence`
+
+The PR comment keeps sustained findings in the main table with an inline adversarial note, moves downgraded non-critical findings into a collapsed `Challenged findings` section, and keeps downgraded CRITICAL findings in the main table so the deterministic critical gate is unchanged.
+
+If no provider key is present, the prompt fails to load, the provider fails, or the model returns malformed JSON for one finding, the workflow degrades gracefully. No-provider mode writes the original enriched findings through unchanged. Per-finding failures leave only that finding without adversarial fields and continue.
 
 ## Prompt Management
 

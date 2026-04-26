@@ -28,36 +28,31 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def build_table(findings: list[dict[str, Any]]) -> str:
+def build_table(findings: list[dict[str, Any]], include_counter_argument: bool = False) -> str:
     include_taint_path = any(finding.get("taint_path") for finding in findings)
-    header = (
-        "| Severity | File | Line | Finding | Taint Path | CWE | Fix Suggestion |\n"
-        "| --- | --- | --- | --- | --- | --- | --- |"
-        if include_taint_path
-        else (
-            "| Severity | File | Line | Finding | CWE | Fix Suggestion |\n"
-            "| --- | --- | --- | --- | --- | --- |"
-        )
-    )
+    columns = ["Severity", "File", "Line", "Finding"]
+    if include_taint_path:
+        columns.append("Taint Path")
+    columns.append("CWE")
+    if include_counter_argument:
+        columns.append("Counter-Argument")
+    columns.append("Fix Suggestion")
+    header = "| " + " | ".join(columns) + " |\n| " + " | ".join(["---"] * len(columns)) + " |"
     rows = []
     for finding in findings:
-        values = {
-            "severity": severity_with_origin(finding),
-            "file": finding["file"],
-            "line": finding["line"],
-            "message": escape_pipes(preferred_finding_text(finding)),
-            "cwe": escape_pipes(finding["cwe"]),
-            "fix": escape_pipes(preferred_fix_text(finding)),
-            "taint_path": escape_pipes(str(finding.get("taint_path", ""))),
-        }
+        row = [
+            severity_with_origin(finding),
+            f"`{finding['file']}`",
+            str(finding["line"]),
+            escape_pipes(preferred_finding_text(finding, include_counter_argument=include_counter_argument)),
+        ]
         if include_taint_path:
-            rows.append(
-                "| {severity} | `{file}` | {line} | {message} | {taint_path} | {cwe} | {fix} |".format(**values)
-            )
-        else:
-            rows.append(
-                "| {severity} | `{file}` | {line} | {message} | {cwe} | {fix} |".format(**values)
-            )
+            row.append(escape_pipes(str(finding.get("taint_path", ""))))
+        row.append(escape_pipes(finding["cwe"]))
+        if include_counter_argument:
+            row.append(escape_pipes(str(finding.get("counter_argument", ""))))
+        row.append(escape_pipes(preferred_fix_text(finding)))
+        rows.append("| " + " | ".join(row) + " |")
     return "\n".join([header, *rows])
 
 
@@ -65,12 +60,44 @@ def escape_pipes(value: str) -> str:
     return str(value).replace("|", "\\|").replace("\n", " ")
 
 
-def preferred_finding_text(finding: dict[str, Any]) -> str:
-    return str(finding.get("enriched_finding") or finding.get("finding", ""))
+def preferred_finding_text(finding: dict[str, Any], include_counter_argument: bool = False) -> str:
+    text = str(finding.get("enriched_finding") or finding.get("finding", ""))
+    if include_counter_argument:
+        return text
+
+    note = adversarial_note_for_main_table(finding)
+    if not note:
+        return text
+    return f"{text} ({note})"
 
 
 def preferred_fix_text(finding: dict[str, Any]) -> str:
     return str(finding.get("enriched_fix") or finding.get("fix_suggestion", ""))
+
+
+def one_line_text(value: Any) -> str:
+    return " ".join(str(value).split())
+
+
+def normalize_verdict(value: Any) -> str:
+    return one_line_text(value).lower()
+
+
+def adversarial_note_for_main_table(finding: dict[str, Any]) -> str:
+    verdict = normalize_verdict(finding.get("verdict", ""))
+    severity = str(finding.get("severity", "")).strip().lower()
+    counter_argument = one_line_text(finding.get("counter_argument", ""))
+
+    if verdict == "sustained":
+        note = "Adversarial review: sustained"
+    elif verdict == "downgraded" and severity == "critical":
+        note = "Adversarial review: downgraded"
+    else:
+        return ""
+
+    if counter_argument:
+        return f"{note}. {counter_argument}"
+    return note
 
 
 def severity_with_origin(finding: dict[str, Any]) -> str:
@@ -83,15 +110,26 @@ def severity_with_origin(finding: dict[str, Any]) -> str:
     return severity
 
 
-def split_findings(findings: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    active: list[dict[str, Any]] = []
+def split_findings(findings: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    main_findings: list[dict[str, Any]] = []
+    challenged: list[dict[str, Any]] = []
     pre_existing: list[dict[str, Any]] = []
+
     for finding in findings:
+        if normalize_verdict(finding.get("verdict", "")) == "downgraded" and str(
+            finding.get("severity", "")
+        ).strip().lower() != "critical":
+            challenged.append(finding)
+            continue
+        main_findings.append(finding)
+
+    active: list[dict[str, Any]] = []
+    for finding in main_findings:
         if str(finding.get("origin", "")).strip().lower() == "pre-existing":
             pre_existing.append(finding)
         else:
             active.append(finding)
-    return active, pre_existing
+    return active, challenged, pre_existing
 
 
 def format_blockquote(text: str) -> list[str]:
@@ -144,13 +182,25 @@ def build_comment_body(payload: dict[str, Any]) -> str:
         ]
     )
 
-    active_findings, pre_existing_findings = split_findings(findings)
+    active_findings, challenged_findings, pre_existing_findings = split_findings(findings)
 
     if findings:
         if active_findings:
             lines.append(build_table(active_findings))
         else:
             lines.append("No introduced or unclassified findings are present in the main results table.")
+        if challenged_findings:
+            lines.extend(
+                [
+                    "",
+                    "<details>",
+                    f"<summary>Challenged findings ({len(challenged_findings)})</summary>",
+                    "",
+                    build_table(challenged_findings, include_counter_argument=True),
+                    "",
+                    "</details>",
+                ]
+            )
         if pre_existing_findings:
             lines.extend(
                 [

@@ -1,21 +1,26 @@
 .DS_Store
+
+# secrets and local env
 .env
 .env.*
 !.env.ai.example
+
+# internal planning (never committed)
 .internal/
+
+# tooling
 .semgrep/
 .semgrep-settings.yml
 .venv/
 .venv_sys/
-__pycache__/
-scanner/__pycache__/
+**/__pycache__/
 *.pyc
 *.log
-comment-*.md
-scan-results.json
-*findings*.json
-narrative-findings.json
-*enriched*.json
-terrain-findings.json
-domain_context.json
 .pytest_cache/
+
+# pipeline artifacts
+scan-results.json
+domain_context.json
+*findings*.json
+comment-*.md
+scratch/

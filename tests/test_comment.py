@@ -114,6 +114,66 @@ class CommentTests(unittest.TestCase):
         self.assertIn("CRITICAL<br>PRE-EXISTING", details_section)
         self.assertIn("caretrack/legacy.py", details_section)
 
+    def test_build_comment_body_appends_sustained_adversarial_note_in_main_table(self) -> None:
+        payload = dict(BASE_PAYLOAD)
+        payload["findings"] = [
+            {
+                **BASE_PAYLOAD["findings"][0],
+                "verdict": "sustained",
+                "counter_argument": "The input is partially validated, but user-controlled data still reaches shell execution.",
+            }
+        ]
+
+        body = comment.build_comment_body(payload)
+
+        self.assertIn("Adversarial review: sustained", body)
+        self.assertIn("partially validated", body)
+
+    def test_build_comment_body_moves_downgraded_high_findings_to_challenged_details(self) -> None:
+        payload = dict(BASE_PAYLOAD)
+        payload["summary"] = {
+            "total": 2,
+            "counts": {"critical": 1, "high": 1, "medium": 0, "low": 0},
+            "has_critical": True,
+        }
+        payload["findings"] = [
+            BASE_PAYLOAD["findings"][0],
+            {
+                "rule_id": "rule-2",
+                "severity": "high",
+                "file": "caretrack/db.py",
+                "line": 44,
+                "finding": "SQL injection risk in query builder.",
+                "cwe": "CWE-89",
+                "fix_suggestion": "Use parameterized queries.",
+                "verdict": "downgraded",
+                "counter_argument": "The query string is assembled from an internal enum and not user input.",
+            },
+        ]
+
+        body = comment.build_comment_body(payload)
+        main_section, details_section = body.split("<details>", maxsplit=1)
+
+        self.assertNotIn("caretrack/db.py", main_section)
+        self.assertIn("<summary>Challenged findings (1)</summary>", body)
+        self.assertIn("internal enum", details_section)
+
+    def test_build_comment_body_keeps_downgraded_critical_findings_in_main_table(self) -> None:
+        payload = dict(BASE_PAYLOAD)
+        payload["findings"] = [
+            {
+                **BASE_PAYLOAD["findings"][0],
+                "verdict": "downgraded",
+                "counter_argument": "The command list is fixed and the shell is not invoked in the reachable code path.",
+            }
+        ]
+
+        body = comment.build_comment_body(payload)
+
+        self.assertIn("caretrack/support_tools.py", body)
+        self.assertIn("Adversarial review: downgraded", body)
+        self.assertNotIn("Challenged findings (1)", body)
+
     def test_build_comment_body_omits_origin_badge_when_origin_missing(self) -> None:
         body = comment.build_comment_body(BASE_PAYLOAD)
 

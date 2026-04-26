@@ -47,13 +47,14 @@ def build_findings_block(payload: dict[str, Any]) -> str:
 
     for finding in prompt_findings:
         lines.append(
-            "- {severity} | {file}:{line} | {message} | CWE: {cwe} | Suggested fix: {fix}".format(
+            "- {severity} | {file}:{line} | {message} | CWE: {cwe} | Suggested fix: {fix}{adversarial}".format(
                 severity=str(finding.get("severity", "unknown")).upper(),
                 file=finding.get("file", ""),
                 line=finding.get("line", ""),
                 message=one_line_text(finding.get("enriched_finding") or finding.get("finding", "")),
                 cwe=one_line_text(finding.get("cwe", "N/A")),
                 fix=one_line_text(finding.get("enriched_fix") or finding.get("fix_suggestion", "")),
+                adversarial=format_adversarial_context(finding),
             )
         )
 
@@ -87,6 +88,23 @@ def build_user_prompt(payload: dict[str, Any]) -> str:
 
 def one_line_text(value: Any) -> str:
     return " ".join(str(value).split())
+
+
+def format_adversarial_context(finding: dict[str, Any]) -> str:
+    verdict = one_line_text(finding.get("verdict", "")).lower()
+    counter_argument = one_line_text(finding.get("counter_argument", ""))
+    confidence = one_line_text(finding.get("adversarial_confidence", "")).lower()
+
+    parts = []
+    if verdict:
+        parts.append(f"verdict={verdict}")
+    if confidence:
+        parts.append(f"confidence={confidence}")
+    if counter_argument:
+        parts.append(f"counter_argument={counter_argument}")
+    if not parts:
+        return ""
+    return " | Adversarial review: " + "; ".join(parts)
 
 
 def generate_narrative(payload: dict[str, Any], provider: dict[str, str]) -> str:
