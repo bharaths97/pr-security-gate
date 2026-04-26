@@ -56,6 +56,26 @@ def build_table(findings: list[dict[str, Any]], include_counter_argument: bool =
     return "\n".join([header, *rows])
 
 
+def build_extended_analysis_table(findings: list[dict[str, Any]]) -> str:
+    columns = ["File", "Line", "Confidence", "Chain"]
+    header = "| " + " | ".join(columns) + " |\n| " + " | ".join(["---"] * len(columns)) + " |"
+    rows = []
+    for finding in findings:
+        rows.append(
+            "| "
+            + " | ".join(
+                [
+                    f"`{finding['file']}`",
+                    str(finding["line"]),
+                    escape_pipes(str(finding.get("confidence", "low")).lower()),
+                    escape_pipes(str(finding.get("chain", ""))),
+                ]
+            )
+            + " |"
+        )
+    return "\n".join([header, *rows])
+
+
 def escape_pipes(value: str) -> str:
     return str(value).replace("|", "\\|").replace("\n", " ")
 
@@ -110,12 +130,18 @@ def severity_with_origin(finding: dict[str, Any]) -> str:
     return severity
 
 
-def split_findings(findings: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+def split_findings(
+    findings: list[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     main_findings: list[dict[str, Any]] = []
     challenged: list[dict[str, Any]] = []
     pre_existing: list[dict[str, Any]] = []
+    cross_file: list[dict[str, Any]] = []
 
     for finding in findings:
+        if str(finding.get("origin", "")).strip().lower() == "cross-file":
+            cross_file.append(finding)
+            continue
         if normalize_verdict(finding.get("verdict", "")) == "downgraded" and str(
             finding.get("severity", "")
         ).strip().lower() != "critical":
@@ -129,7 +155,7 @@ def split_findings(findings: list[dict[str, Any]]) -> tuple[list[dict[str, Any]]
             pre_existing.append(finding)
         else:
             active.append(finding)
-    return active, challenged, pre_existing
+    return active, challenged, pre_existing, cross_file
 
 
 def format_blockquote(text: str) -> list[str]:
@@ -182,7 +208,7 @@ def build_comment_body(payload: dict[str, Any]) -> str:
         ]
     )
 
-    active_findings, challenged_findings, pre_existing_findings = split_findings(findings)
+    active_findings, challenged_findings, pre_existing_findings, cross_file_findings = split_findings(findings)
 
     if findings:
         if active_findings:
@@ -209,6 +235,20 @@ def build_comment_body(payload: dict[str, Any]) -> str:
                     f"<summary>Pre-existing findings ({len(pre_existing_findings)})</summary>",
                     "",
                     build_table(pre_existing_findings),
+                    "",
+                    "</details>",
+                ]
+            )
+        if cross_file_findings:
+            lines.extend(
+                [
+                    "",
+                    "<details>",
+                    f"<summary>Extended Analysis ({len(cross_file_findings)})</summary>",
+                    "",
+                    "Low-confidence cross-file chains that originate in the diff and appear to reach a downstream sink:",
+                    "",
+                    build_extended_analysis_table(cross_file_findings),
                     "",
                     "</details>",
                 ]

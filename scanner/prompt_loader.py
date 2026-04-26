@@ -27,6 +27,7 @@ ALLOWED_VARIABLES = {
     "enrich": {"domain_summary", "findings_block"},
     "terrain": {"domain_summary", "file_path", "file_findings", "file_content"},
     "adversarial": {"domain_summary", "finding_block"},
+    "call_graph": {"domain_summary", "max_depth", "changed_function_block", "chain_block"},
 }
 _PROMPT_CACHE: dict[str, dict[str, Any]] = {}
 

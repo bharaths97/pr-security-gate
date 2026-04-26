@@ -113,6 +113,20 @@ class PromptLoaderTests(unittest.TestCase):
         self.assertIn('{"rule_id": "rule-1"}', rendered)
         self.assertIn("risk_tier=high", rendered)
 
+    def test_render_call_graph_prompt_accepts_phase6_variables(self) -> None:
+        rendered = prompt_loader.render(
+            "call_graph",
+            "user_template",
+            domain_summary="risk_tier=high",
+            max_depth=2,
+            changed_function_block='{"name": "parse_user_request"}',
+            chain_block='{"functions": [{"name": "search_users"}]}',
+        )
+
+        self.assertIn('{"name": "parse_user_request"}', rendered)
+        self.assertIn('{"functions": [{"name": "search_users"}]}', rendered)
+        self.assertIn("risk_tier=high", rendered)
+
 
 if __name__ == "__main__":
     unittest.main()

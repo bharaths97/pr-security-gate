@@ -174,6 +174,41 @@ class CommentTests(unittest.TestCase):
         self.assertIn("Adversarial review: downgraded", body)
         self.assertNotIn("Challenged findings (1)", body)
 
+    def test_build_comment_body_renders_cross_file_chains_in_extended_analysis_only(self) -> None:
+        payload = dict(BASE_PAYLOAD)
+        payload["summary"] = {
+            "total": 2,
+            "counts": {"critical": 1, "high": 0, "medium": 0, "low": 0},
+            "has_critical": True,
+            "cross_file_chains": 1,
+        }
+        payload["findings"] = [
+            BASE_PAYLOAD["findings"][0],
+            {
+                "rule_id": "cross-file-chain",
+                "severity": "info",
+                "file": "caretrack/support_tools.py",
+                "line": 21,
+                "finding": "Cross-file taint chain detected.",
+                "cwe": "N/A",
+                "fix_suggestion": "Review downstream usage.",
+                "origin": "cross-file",
+                "confidence": "low",
+                "chain": "parse_user_request() [changed] -> db_manager.search_users() [unchanged] -> cursor.execute() [sink]",
+                "hops": 1,
+            },
+        ]
+
+        body = comment.build_comment_body(payload)
+        main_section, details_section = body.split("<details>", maxsplit=1)
+
+        self.assertNotIn("cross-file-chain", main_section)
+        self.assertNotIn("cursor.execute()", main_section)
+        self.assertIn("<summary>Extended Analysis (1)</summary>", body)
+        self.assertIn("Low-confidence cross-file chains", details_section)
+        self.assertIn("| Confidence | Chain |", details_section)
+        self.assertIn("cursor.execute()", details_section)
+
     def test_build_comment_body_omits_origin_badge_when_origin_missing(self) -> None:
         body = comment.build_comment_body(BASE_PAYLOAD)
 
@@ -190,6 +225,43 @@ class CommentTests(unittest.TestCase):
                     exit_code = comment.main()
 
         self.assertEqual(exit_code, 1)
+
+    def test_dry_run_with_only_cross_file_findings_keeps_passing_exit_code(self) -> None:
+        payload = {
+            "summary": {
+                "total": 1,
+                "counts": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+                "has_critical": False,
+                "cross_file_chains": 1,
+            },
+            "findings": [
+                {
+                    "rule_id": "cross-file-chain",
+                    "severity": "info",
+                    "file": "caretrack/support_tools.py",
+                    "line": 21,
+                    "finding": "Cross-file taint chain detected.",
+                    "cwe": "N/A",
+                    "fix_suggestion": "Review downstream usage.",
+                    "origin": "cross-file",
+                    "confidence": "low",
+                    "chain": "parse_user_request() [changed] -> db_manager.search_users() [unchanged] -> cursor.execute() [sink]",
+                    "hops": 1,
+                }
+            ],
+            "source": dict(BASE_PAYLOAD["source"]),
+            "narrative": None,
+        }
+
+        with TemporaryDirectory() as temp_dir:
+            input_path = Path(temp_dir) / "narrative-findings.json"
+            input_path.write_text(json.dumps(payload), encoding="utf-8")
+
+            with patch("sys.argv", ["comment.py", "--input", str(input_path), "--dry-run"]):
+                with patch("sys.stdout", new=StringIO()):
+                    exit_code = comment.main()
+
+        self.assertEqual(exit_code, 0)
 
 
 if __name__ == "__main__":
