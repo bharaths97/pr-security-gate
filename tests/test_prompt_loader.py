@@ -89,6 +89,19 @@ class PromptLoaderTests(unittest.TestCase):
 
         self.assertIs(first, second)
 
+    def test_render_terrain_prompt_accepts_phase4_variables(self) -> None:
+        rendered = prompt_loader.render(
+            "terrain",
+            "user_template",
+            domain_summary="risk_tier=high",
+            file_path="caretrack/support_tools.py",
+            file_findings='{"findings": []}',
+            file_content="1: print('hello')",
+        )
+
+        self.assertIn("caretrack/support_tools.py", rendered)
+        self.assertIn("risk_tier=high", rendered)
+
 
 if __name__ == "__main__":
     unittest.main()

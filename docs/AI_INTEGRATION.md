@@ -12,6 +12,7 @@ The AI roadmap extends that pipeline in stages so the project gains better revie
 - Phase 1 risk narrative is implemented and validated as an optional enrichment step
 - Phase 2 domain context is implemented locally as a setup artifact for later AI phases
 - Phase 3 finding enrichment is implemented and validated in the reusable workflow between triage and narrative
+- Phase 4 terrain synthesis is implemented on `ai-phase4-terrain`, validated in local plus Docker unit tests, and wires a new terrain step between triage and enrichment
 - AI prompts are centralized under `prompts/*.toml` and rendered through a shared allowlist-based loader
 - If no AI provider key is present or a provider call fails, the workflow falls back to the normal comment without weakening the gate
 
@@ -54,7 +55,7 @@ Phase 2 reuses the same provider inputs as Phase 1 — no new workflow configura
 
 ## Phase 3 Finding Enrichment
 
-`scanner/ai_enrich.py` reads `triaged-findings.json`, optionally combines it with `domain_context.json`, and writes `enriched-findings.json`. Each finding may gain:
+`scanner/ai_enrich.py` reads `triaged-findings.json` or `terrain-findings.json`, optionally combines it with `domain_context.json`, and writes `enriched-findings.json`. Each finding may gain:
 
 - `enriched_finding`
 - `enriched_fix`
@@ -65,6 +66,23 @@ When enrichment succeeds, the PR comment table prefers `enriched_finding` and `e
 If no provider key is present, the provider call fails, the prompt fails to load, or the model returns malformed JSON, the workflow falls back to the original triaged finding text and continues normally. The critical gate still depends only on `summary.has_critical`.
 
 Phase 3 reuses the same workflow inputs and secrets as Phases 1 and 2 — no new consumer-side configuration is required beyond optionally providing an AI provider key.
+
+## Phase 4 Terrain Synthesis
+
+`scanner/terrain.py` runs after triage and before enrichment. For each changed file that has findings, it sends the numbered file content and file-local finding summary to the configured provider, asks for likely taint sources and sinks, and writes `terrain-findings.json`.
+
+When terrain succeeds, findings may gain:
+
+- `origin` with `introduced`, `pre-existing`, or `unknown`
+- `taint_path`
+- `source_line`
+- `sink_line`
+- `source_description`
+- `sink_description`
+
+The PR comment can then surface a `NEW` or `PRE-EXISTING` badge in the severity column, add a `Taint Path` column when available, and move pre-existing findings into a collapsed `<details>` section. The critical gate is unchanged because it still depends only on structured severity counts.
+
+If no provider key is present, `AI_PROVIDER=none` is used, the prompt fails to load, a file cannot be read, the provider fails, or the model returns malformed JSON for a file, the workflow degrades gracefully. No-provider mode writes the original triaged findings through unchanged. Per-file failures mark only that file's findings as `origin: unknown` and continue.
 
 ## Prompt Management
 

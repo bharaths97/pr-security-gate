@@ -9,7 +9,7 @@ from typing import Any
 
 
 PROMPT_DIR = Path(__file__).resolve().parents[1] / "prompts"
-MAX_INJECT_BYTES = 8000
+MAX_INJECT_BYTES = 24000
 ALLOWED_VARIABLES = {
     "narrative": {
         "github_repository",
@@ -25,6 +25,7 @@ ALLOWED_VARIABLES = {
     },
     "domain_context": {"files_block"},
     "enrich": {"domain_summary", "findings_block"},
+    "terrain": {"domain_summary", "file_path", "file_findings", "file_content"},
 }
 _PROMPT_CACHE: dict[str, dict[str, Any]] = {}
 

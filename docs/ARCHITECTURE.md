@@ -9,6 +9,7 @@
 - Implemented: first validated multi-language rule wave with 21 rules across Python, JavaScript/TypeScript, Go, and Java
 - Implemented locally: optional AI domain context artifact for later enrichment phases
 - Implemented and validated: optional AI finding enrichment step between triage and narrative
+- Implemented on `ai-phase4-terrain`: optional terrain synthesis step between triage and enrichment, validated locally and in Docker
 - Implemented: live consumer-repo validation
 - Implemented: local-vs-cloud tradeoff documentation
 - Planned: deeper rule expansion
@@ -34,7 +35,7 @@ Both paths normalize their raw output into the same payload contract before tria
 
 ### Triage Stage
 
-`scanner/triage.py` normalizes severity, deduplicates results, sorts them by priority, preserves Semgrep `extra.lines` snippets when present, and prepares a structured JSON payload for reporting.
+`scanner/triage.py` normalizes severity, deduplicates results, sorts them by priority, preserves Semgrep `extra.lines` snippets when present, and prepares a structured JSON payload for reporting. It also carries forward the diff SHAs so later stages can reason about whether a finding was introduced in the PR or already existed in the touched file.
 
 ### Prompt Management Stage
 
@@ -44,9 +45,13 @@ AI prompt content lives in `prompts/*.toml` instead of being hardcoded in Python
 
 `scanner/domain_context.py` reads safe, top-level project metadata and writes `domain_context.json`. It builds provider prompts through the shared prompt loader instead of inline strings. The artifact is generated before scanning and cached when provider-backed generation succeeds. If no provider key is configured, no safe files exist, the prompt file is invalid, or the provider fails, it writes an unknown fallback context and the workflow continues.
 
+### Terrain Stage
+
+`scanner/terrain.py` reads `triaged-findings.json`, groups findings by file, reads the changed file content from the repository checkout, and asks the configured provider for file-local source and sink candidates. It then classifies each finding as `introduced`, `pre-existing`, or `unknown` by comparing the nearest source line with lines added in the PR diff. If no provider is available, it writes the triaged findings through unchanged. If a single file fails terrain synthesis, only that file's findings are marked `origin: unknown` and the rest continue.
+
 ### Enrichment Stage
 
-`scanner/ai_enrich.py` reads `triaged-findings.json`, optionally reads `domain_context.json`, and writes `enriched-findings.json`. It sends findings in a single batch prompt, validates that the model returns a JSON array, and only applies `enriched_finding`, `enriched_fix`, and `risk_context` fields that are actually present. If no matching provider key is configured, the prompt fails to load, the provider fails, or the response is malformed, it writes the original findings through unchanged and the workflow continues.
+`scanner/ai_enrich.py` reads `triaged-findings.json` or `terrain-findings.json`, optionally reads `domain_context.json`, and writes `enriched-findings.json`. It sends findings in a single batch prompt, validates that the model returns a JSON array, and only applies `enriched_finding`, `enriched_fix`, and `risk_context` fields that are actually present. Terrain fields pass through unchanged, and the prompt can reference taint context when available. If no matching provider key is configured, the prompt fails to load, the provider fails, or the response is malformed, it writes the original findings through unchanged and the workflow continues.
 
 ### Narrative Stage
 
@@ -54,7 +59,7 @@ AI prompt content lives in `prompts/*.toml` instead of being hardcoded in Python
 
 ### Comment Stage
 
-`scanner/comment.py` renders the markdown findings table for the pull request, prefers enriched finding/fix text when present, includes the optional narrative blockquote when present, and can also preview that output locally in dry-run mode.
+`scanner/comment.py` renders the markdown findings table for the pull request, prefers enriched finding/fix text when present, includes the optional narrative blockquote when present, shows `NEW` / `PRE-EXISTING` badges when terrain data exists, and can move pre-existing findings into a collapsed section while keeping the critical gate unchanged. It can also preview that output locally in dry-run mode.
 
 ### Detection Logic
 
@@ -72,7 +77,8 @@ AI prompt content lives in `prompts/*.toml` instead of being hardcoded in Python
 4. Optional domain context is generated from safe project metadata.
 5. The selected Semgrep backend runs against the pull request context.
 6. Findings are normalized and prioritized.
-7. Optional per-finding enrichment is generated from the triaged findings plus optional domain context.
-8. An optional AI risk narrative is generated from the triaged or enriched findings.
-9. A markdown comment is rendered and posted to the pull request.
-10. The workflow fails when a critical finding exists.
+7. Optional terrain synthesis is generated from triaged findings plus changed-file content.
+8. Optional per-finding enrichment is generated from terrain-aware findings plus optional domain context.
+9. An optional AI risk narrative is generated from the enriched findings.
+10. A markdown comment is rendered and posted to the pull request.
+11. The workflow fails when a critical finding exists.

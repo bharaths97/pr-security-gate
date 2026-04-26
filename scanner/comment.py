@@ -29,22 +29,35 @@ def parse_args() -> argparse.Namespace:
 
 
 def build_table(findings: list[dict[str, Any]]) -> str:
+    include_taint_path = any(finding.get("taint_path") for finding in findings)
     header = (
-        "| Severity | File | Line | Finding | CWE | Fix Suggestion |\n"
-        "| --- | --- | --- | --- | --- | --- |"
+        "| Severity | File | Line | Finding | Taint Path | CWE | Fix Suggestion |\n"
+        "| --- | --- | --- | --- | --- | --- | --- |"
+        if include_taint_path
+        else (
+            "| Severity | File | Line | Finding | CWE | Fix Suggestion |\n"
+            "| --- | --- | --- | --- | --- | --- |"
+        )
     )
     rows = []
     for finding in findings:
-        rows.append(
-            "| {severity} | `{file}` | {line} | {message} | {cwe} | {fix} |".format(
-                severity=finding["severity"].upper(),
-                file=finding["file"],
-                line=finding["line"],
-                message=escape_pipes(preferred_finding_text(finding)),
-                cwe=escape_pipes(finding["cwe"]),
-                fix=escape_pipes(preferred_fix_text(finding)),
+        values = {
+            "severity": severity_with_origin(finding),
+            "file": finding["file"],
+            "line": finding["line"],
+            "message": escape_pipes(preferred_finding_text(finding)),
+            "cwe": escape_pipes(finding["cwe"]),
+            "fix": escape_pipes(preferred_fix_text(finding)),
+            "taint_path": escape_pipes(str(finding.get("taint_path", ""))),
+        }
+        if include_taint_path:
+            rows.append(
+                "| {severity} | `{file}` | {line} | {message} | {taint_path} | {cwe} | {fix} |".format(**values)
             )
-        )
+        else:
+            rows.append(
+                "| {severity} | `{file}` | {line} | {message} | {cwe} | {fix} |".format(**values)
+            )
     return "\n".join([header, *rows])
 
 
@@ -58,6 +71,27 @@ def preferred_finding_text(finding: dict[str, Any]) -> str:
 
 def preferred_fix_text(finding: dict[str, Any]) -> str:
     return str(finding.get("enriched_fix") or finding.get("fix_suggestion", ""))
+
+
+def severity_with_origin(finding: dict[str, Any]) -> str:
+    severity = str(finding.get("severity", "unknown")).upper()
+    origin = str(finding.get("origin", "")).strip().lower()
+    if origin == "introduced":
+        return f"{severity}<br>NEW"
+    if origin == "pre-existing":
+        return f"{severity}<br>PRE-EXISTING"
+    return severity
+
+
+def split_findings(findings: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    active: list[dict[str, Any]] = []
+    pre_existing: list[dict[str, Any]] = []
+    for finding in findings:
+        if str(finding.get("origin", "")).strip().lower() == "pre-existing":
+            pre_existing.append(finding)
+        else:
+            active.append(finding)
+    return active, pre_existing
 
 
 def format_blockquote(text: str) -> list[str]:
@@ -110,8 +144,25 @@ def build_comment_body(payload: dict[str, Any]) -> str:
         ]
     )
 
+    active_findings, pre_existing_findings = split_findings(findings)
+
     if findings:
-        lines.append(build_table(findings))
+        if active_findings:
+            lines.append(build_table(active_findings))
+        else:
+            lines.append("No introduced or unclassified findings are present in the main results table.")
+        if pre_existing_findings:
+            lines.extend(
+                [
+                    "",
+                    "<details>",
+                    f"<summary>Pre-existing findings ({len(pre_existing_findings)})</summary>",
+                    "",
+                    build_table(pre_existing_findings),
+                    "",
+                    "</details>",
+                ]
+            )
     else:
         lines.append("No security findings were detected in the changed files.")
 

@@ -82,6 +82,44 @@ class CommentTests(unittest.TestCase):
         self.assertIn("remove shell=True", body)
         self.assertNotIn("Command injection risk in support helper.", body)
 
+    def test_build_comment_body_renders_origin_badges_taint_column_and_pre_existing_details(self) -> None:
+        payload = dict(BASE_PAYLOAD)
+        payload["findings"] = [
+            {
+                **BASE_PAYLOAD["findings"][0],
+                "origin": "introduced",
+                "taint_path": "HTTP query parameter (line 10) -> subprocess.run shell execution (line 21)",
+            },
+            {
+                **BASE_PAYLOAD["findings"][0],
+                "file": "caretrack/legacy.py",
+                "line": 9,
+                "origin": "pre-existing",
+                "taint_path": "config value (line 3) -> exec sink (line 9)",
+            },
+        ]
+        payload["summary"] = {
+            "total": 2,
+            "counts": {"critical": 2, "high": 0, "medium": 0, "low": 0},
+            "has_critical": True,
+        }
+
+        body = comment.build_comment_body(payload)
+        main_section, details_section = body.split("<details>", maxsplit=1)
+
+        self.assertIn("| Taint Path |", body)
+        self.assertIn("CRITICAL<br>NEW", main_section)
+        self.assertNotIn("caretrack/legacy.py", main_section)
+        self.assertIn("<summary>Pre-existing findings (1)</summary>", body)
+        self.assertIn("CRITICAL<br>PRE-EXISTING", details_section)
+        self.assertIn("caretrack/legacy.py", details_section)
+
+    def test_build_comment_body_omits_origin_badge_when_origin_missing(self) -> None:
+        body = comment.build_comment_body(BASE_PAYLOAD)
+
+        self.assertNotIn("<br>NEW", body)
+        self.assertNotIn("PRE-EXISTING", body)
+
     def test_dry_run_with_critical_findings_returns_failing_exit_code(self) -> None:
         with TemporaryDirectory() as temp_dir:
             input_path = Path(temp_dir) / "narrative-findings.json"

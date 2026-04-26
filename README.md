@@ -32,6 +32,7 @@ Private working notes are kept in a local gitignored `.internal/` directory and 
 - Completed: optional AI risk narrative via Anthropic or OpenAI, validated locally and in GitHub Actions
 - Completed: optional AI domain context artifact implemented and wired into the reusable workflow for later enrichment phases
 - Completed: optional AI finding enrichment step now generates `enriched-findings.json`, feeds enriched text into the PR narrative, prefers enriched text in the comment table, and has been validated in GitHub Actions
+- Implemented on `ai-phase4-terrain`: optional AI terrain synthesis now generates `terrain-findings.json`, classifies findings as `introduced` or `pre-existing`, adds taint-path context to the comment, and has passed local plus Docker unit validation
 - Planned: pin Actions by SHA, add real PR evidence, and keep expanding the rule library beyond the current first wave
 
 ## Project Layout
@@ -43,6 +44,7 @@ docs/
 rules/
 scanner/ai_provider.py
 scanner/ai_enrich.py
+scanner/terrain.py
 scanner/run_scan.py
 scanner/triage.py
 scanner/domain_context.py
@@ -60,10 +62,11 @@ requirements.txt
 4. In `local` mode, Semgrep runs with the language-specific rule packs in [`rules/`](rules). In `cloud` mode, `semgrep ci` uses the repository's Semgrep AppSec Platform configuration.
 5. `scanner/domain_context.py` optionally summarizes safe, top-level project metadata into `domain_context.json` for later AI phases.
 6. `scanner/triage.py` deduplicates findings by `rule_id + file + line`, preserves Semgrep `extra.lines` snippets for later enrichment, sorts results from `critical` to `low`, and emits the structured finding summary.
-7. `scanner/ai_enrich.py` optionally generates per-finding `enriched_finding`, `enriched_fix`, and `risk_context` fields from the triaged findings plus optional domain context.
-8. `scanner/narrative.py` optionally adds a short AI risk narrative and writes `narrative-findings.json`. When enriched finding text exists, the narrative prompt uses that improved wording automatically.
-9. `scanner/comment.py` can render the markdown comment locally in dry-run mode, prefers enriched text in the findings table when available, and then uses `PyGithub` and `GITHUB_TOKEN` to upsert that same body to the pull request.
-10. If any finding is `critical`, the comment step exits non-zero so the GitHub Action fails. With branch protection enabled for this check, the PR is blocked from merging.
+7. `scanner/terrain.py` optionally analyzes each changed file with findings, identifies likely sources and sinks, and writes `terrain-findings.json` with `origin` and `taint_path` context when available.
+8. `scanner/ai_enrich.py` optionally generates per-finding `enriched_finding`, `enriched_fix`, and `risk_context` fields from terrain-aware findings plus optional domain context.
+9. `scanner/narrative.py` optionally adds a short AI risk narrative and writes `narrative-findings.json`. When enriched finding text exists, the narrative prompt uses that improved wording automatically.
+10. `scanner/comment.py` can render the markdown comment locally in dry-run mode, prefers enriched text in the findings table when available, separates `pre-existing` findings into a collapsed section, and then uses `PyGithub` and `GITHUB_TOKEN` to upsert that same body to the pull request.
+11. If any finding is `critical`, the comment step exits non-zero so the GitHub Action fails. With branch protection enabled for this check, the PR is blocked from merging.
 
 ## Modular Usage
 
@@ -187,17 +190,17 @@ With AI enrichment plus narrative:
 ```markdown
 ## PR Security Gate Results
 
-> This PR introduces a hardcoded credential and an unsafe shell execution path. The exposed secret should be rotated immediately, and the shell execution path should be constrained before merge.
+> This PR introduces a new shell execution path and also touches a pre-existing unsafe query path. The new command execution issue should be remediated before merge, while the older query path should be tracked explicitly because the PR did not introduce it.
 
 Status: failing because at least one critical finding was detected.
 
 Scanned `21` changed source file(s) out of `21` changed file(s).
 Findings: critical `4`, high `14`, medium `3`, low `0`.
 
-| Severity | File | Line | Finding | CWE | Fix Suggestion |
-| --- | --- | --- | --- | --- | --- |
-| CRITICAL | `tests/vulnerable_samples/python/hardcoded_secret.py` | 1 | Secret material is hardcoded directly in the Python source and would be committed to version control if merged. | CWE-798 | Remove the embedded credential, rotate it, and load it from an environment variable or secret manager instead of source code. |
-| HIGH | `tests/vulnerable_samples/javascript/exec_user_input.js` | 4 | User-controlled input reaches a shell command invocation in the helper script. | CWE-78 | Pass validated arguments as an array and remove shell-based execution so user input is never interpreted by the shell. |
+| Severity | File | Line | Finding | Taint Path | CWE | Fix Suggestion |
+| --- | --- | --- | --- | --- | --- | --- |
+| CRITICAL<br>NEW | `caretrack/support_tools.py` | 21 | User-controlled helper input reaches a shell execution path in the support tooling. | HTTP request parameter (line 10) -> subprocess.run(..., shell=True) (line 21) | CWE-78 | Validate the helper input, avoid shell execution, and pass arguments as an explicit list instead of invoking a shell. |
+| HIGH<br>PRE-EXISTING | `caretrack/db.py` | 44 | A database query is still built from user-controlled input with string concatenation in legacy code touched by this PR. | User-controlled database parameter (line 30) -> cursor.execute(query) (line 44) | CWE-89 | Replace string-built queries with parameterized execution and keep untrusted values out of SQL text construction. |
 ...
 ```
 
@@ -223,8 +226,14 @@ docker compose run --rm security-gate \
   python scanner/triage.py --input scan-results.json --output triaged-findings.json
 
 docker compose run --rm security-gate \
-  python scanner/ai_enrich.py \
+  python scanner/terrain.py \
     --input triaged-findings.json \
+    --context domain_context.json \
+    --output terrain-findings.json
+
+docker compose run --rm security-gate \
+  python scanner/ai_enrich.py \
+    --input terrain-findings.json \
     --context domain_context.json \
     --output enriched-findings.json
 

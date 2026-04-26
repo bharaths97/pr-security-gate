@@ -16,18 +16,28 @@ class DomainContextTests(unittest.TestCase):
             (repo_root / "Dockerfile").write_text("FROM python:3.11", encoding="utf-8")
             (repo_root / ".env.example").write_text("DATABASE_URL=", encoding="utf-8")
             (repo_root / ".env").write_text("SECRET=real", encoding="utf-8")
+            (repo_root / ".env.staging").write_text("SECRET=real", encoding="utf-8")
             (repo_root / "app.py").write_text("print('source')", encoding="utf-8")
             (repo_root / "scan-results.json").write_text("{}", encoding="utf-8")
             (repo_root / "triaged-findings.json").write_text("{}", encoding="utf-8")
-            (repo_root / "narrative-findings.json").write_text("{}", encoding="utf-8")
             (repo_root / "domain_context.json").write_text("{}", encoding="utf-8")
-            (repo_root / "enriched-findings.json").write_text("{}", encoding="utf-8")
-            (repo_root / ".pr-security-gate").mkdir()
-            (repo_root / ".pr-security-gate" / "README.md").write_text("scanner docs", encoding="utf-8")
+            (repo_root / "comment-preview.md").write_text("preview", encoding="utf-8")
+            (repo_root / ".pr-tooling").mkdir()
+            (repo_root / ".pr-tooling" / "README.md").write_text("scanner docs", encoding="utf-8")
+            (repo_root / "package.json").write_text('{"name":"demo"}', encoding="utf-8")
 
             files = domain_context.collect_context_files(repo_root)
 
-        self.assertEqual([path.name for path in files], [".env.example", "Dockerfile", "README.md"])
+        self.assertEqual([path.name for path in files], [".env.example", "Dockerfile", "package.json", "README.md"])
+
+    def test_is_allowed_context_file_blocks_generated_patterns_without_repo_specific_names(self) -> None:
+        self.assertFalse(domain_context.is_allowed_context_file(Path("custom-findings.json")))
+        self.assertFalse(domain_context.is_allowed_context_file(Path("cloud-results.json")))
+        self.assertFalse(domain_context.is_allowed_context_file(Path("review-preview.md")))
+        self.assertFalse(domain_context.is_allowed_context_file(Path("app_context.json")))
+        self.assertFalse(domain_context.is_allowed_context_file(Path(".env.staging")))
+        self.assertTrue(domain_context.is_allowed_context_file(Path(".env.example")))
+        self.assertTrue(domain_context.is_allowed_context_file(Path("package.json")))
 
     def test_no_provider_writes_unknown_context(self) -> None:
         with TemporaryDirectory() as temp_dir:
