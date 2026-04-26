@@ -23,6 +23,10 @@ SAMPLE_PAYLOAD = {
             "lines": "subprocess.run(cmd, shell=True)",
             "cwe": "CWE-78",
             "fix_suggestion": "Avoid passing unsanitized user input into shell commands.",
+            "origin": "introduced",
+            "taint_path": "HTTP query parameter (line 10) -> subprocess.run shell execution (line 12)",
+            "source_description": "HTTP query parameter",
+            "sink_description": "subprocess.run shell execution",
         },
         {
             "rule_id": "rule-2",
@@ -117,6 +121,8 @@ class AiEnrichTests(unittest.TestCase):
         self.assertIn("data_sensitivity=PHI", prompt)
         self.assertIn("subprocess.run(cmd, shell=True)", prompt)
         self.assertIn("\"index\": 0", prompt)
+        self.assertIn("\"origin\": \"introduced\"", prompt)
+        self.assertIn("HTTP query parameter (line 10)", prompt)
 
     def test_parse_json_array_accepts_fenced_json(self) -> None:
         parsed = ai_enrich.parse_json_array(

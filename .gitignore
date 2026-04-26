@@ -13,7 +13,7 @@ scanner/__pycache__/
 *.log
 comment-*.md
 scan-results.json
-triaged-findings*.json
+*findings*.json
 narrative-findings.json
 *enriched*.json
 terrain-findings.json

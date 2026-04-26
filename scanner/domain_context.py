@@ -42,19 +42,16 @@ ALLOWED_PATTERNS = (
     "*.toml",
     "*.json",
 )
-DENIED_EXACT_FILES = {
-    ".env",
-    ".env.local",
-    ".env.production",
-    ".env.development",
-    "comment-preview.md",
-    "domain_context.json",
-    "enriched-findings.json",
-    "narrative-findings.json",
-    "scan-results.json",
-    "triaged-findings.json",
-}
-DENIED_PREFIXES = (".git", ".pr-security-gate", ".venv", "node_modules", "__pycache__")
+DENIED_EXACT_FILES = {".env"}
+DENIED_FILE_PATTERNS = (
+    ".env.*",
+    "*-findings.json",
+    "*-results.json",
+    "*-preview.md",
+    "*_context.json",
+)
+DENIED_DIRECTORY_NAMES = {".git", ".venv", "node_modules", "__pycache__"}
+DENIED_DIRECTORY_PATTERNS = (".pr-*",)
 
 
 def parse_args() -> argparse.Namespace:
@@ -72,13 +69,27 @@ def parse_args() -> argparse.Namespace:
 
 def is_allowed_context_file(path: Path) -> bool:
     name = path.name
-    if name in DENIED_EXACT_FILES:
+    if is_denied_context_file(name):
         return False
-    if any(part.startswith(DENIED_PREFIXES) for part in path.parts):
+    if any(is_denied_directory(part) for part in path.parts[:-1]):
         return False
     if name in ALLOWED_EXACT_FILES:
         return True
     return any(fnmatch.fnmatch(name, pattern) for pattern in ALLOWED_PATTERNS)
+
+
+def is_denied_context_file(name: str) -> bool:
+    if name in DENIED_EXACT_FILES:
+        return True
+    if name == ".env.example":
+        return False
+    return any(fnmatch.fnmatch(name, pattern) for pattern in DENIED_FILE_PATTERNS)
+
+
+def is_denied_directory(name: str) -> bool:
+    if name in DENIED_DIRECTORY_NAMES:
+        return True
+    return any(fnmatch.fnmatch(name, pattern) for pattern in DENIED_DIRECTORY_PATTERNS)
 
 
 def collect_context_files(repo_root: Path) -> list[Path]:

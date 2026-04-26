@@ -23,7 +23,7 @@ select_provider = ai_provider.select_provider
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", required=True, help="Triaged findings JSON path.")
+    parser.add_argument("--input", required=True, help="Triaged or terrain findings JSON path.")
     parser.add_argument("--output", required=True, help="Enriched findings JSON path.")
     parser.add_argument(
         "--context",
@@ -72,6 +72,10 @@ def build_findings_block(findings: list[dict[str, Any]]) -> str:
                 "fix_suggestion": one_line_text(finding.get("fix_suggestion", "")),
                 "cwe": one_line_text(finding.get("cwe", "N/A")),
                 "lines": normalize_prompt_lines(finding.get("lines")),
+                "origin": one_line_text(finding.get("origin", "unknown")),
+                "taint_path": one_line_text(finding.get("taint_path", "unknown")),
+                "source_description": one_line_text(finding.get("source_description", "unknown")),
+                "sink_description": one_line_text(finding.get("sink_description", "unknown")),
             }
             for index, finding in enumerate(prompt_findings)
         ]

@@ -132,6 +132,8 @@ def main() -> int:
             "changed_files": payload.get("paths", {}).get("changed", []),
             "scanned_files": payload.get("paths", {}).get("scanned", []),
             "reason": payload.get("metadata", {}).get("reason", ""),
+            "base_sha": payload.get("metadata", {}).get("base_sha", ""),
+            "head_sha": payload.get("metadata", {}).get("head_sha", ""),
         },
     }
     Path(args.output).write_text(json.dumps(output, indent=2), encoding="utf-8")
