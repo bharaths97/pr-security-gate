@@ -34,6 +34,7 @@ Private working notes are kept in a local gitignored `.internal/` directory and 
 - Completed: optional AI finding enrichment step now generates `enriched-findings.json`, feeds enriched text into the PR narrative, prefers enriched text in the comment table, and has been validated in GitHub Actions
 - Completed: optional AI terrain synthesis now generates `terrain-findings.json`, classifies findings as `introduced` or `pre-existing`, adds taint-path context to the comment, and has passed local, Docker, and CareTrack validation
 - Completed: optional AI adversarial verification now generates `verified-findings.json`, adds sustained or challenged reviewer context to the comment, and has passed local, Docker, provider-backed smoke, and CareTrack validation
+- Completed: optional AI cross-file taint tracing now generates `call-graph-findings.json`, appends low-confidence cross-file observations, renders an `Extended Analysis` section, and has passed local, Docker, provider-backed smoke, and CareTrack validation
 - Planned: pin Actions by SHA, add real PR evidence, and keep expanding the rule library beyond the current first wave
 
 ## Project Layout
@@ -46,6 +47,7 @@ rules/
 scanner/ai_provider.py
 scanner/ai_enrich.py
 scanner/adversarial.py
+scanner/call_graph.py
 scanner/terrain.py
 scanner/run_scan.py
 scanner/triage.py
@@ -67,9 +69,10 @@ requirements.txt
 7. `scanner/terrain.py` optionally analyzes each changed file with findings, identifies likely sources and sinks, and writes `terrain-findings.json` with `origin` and `taint_path` context when available.
 8. `scanner/ai_enrich.py` optionally generates per-finding `enriched_finding`, `enriched_fix`, and `risk_context` fields from terrain-aware findings plus optional domain context.
 9. `scanner/adversarial.py` optionally challenges each HIGH or CRITICAL finding, writes `verified-findings.json`, and preserves graceful per-finding fallback when a provider response fails.
-10. `scanner/narrative.py` optionally adds a short AI risk narrative and writes `narrative-findings.json`. When verified findings exist, the narrative prompt can reflect adversarial verdict context automatically.
-11. `scanner/comment.py` can render the markdown comment locally in dry-run mode, prefers enriched text in the findings table when available, separates `challenged` and `pre-existing` findings into collapsed sections, and then uses `PyGithub` and `GITHUB_TOKEN` to upsert that same body to the pull request.
-12. If any finding is `critical`, the comment step exits non-zero so the GitHub Action fails. With branch protection enabled for this check, the PR is blocked from merging.
+10. `scanner/call_graph.py` optionally traces changed functions into same-repo unchanged callees, appends low-confidence `origin: "cross-file"` observations to `call-graph-findings.json`, and preserves graceful per-chain fallback when provider resolution fails.
+11. `scanner/narrative.py` optionally adds a short AI risk narrative and writes `narrative-findings.json`. When verified or call-graph findings exist, the narrative prompt can reflect the richer context automatically.
+12. `scanner/comment.py` can render the markdown comment locally in dry-run mode, prefers enriched text in the findings table when available, separates `challenged`, `pre-existing`, and cross-file `Extended Analysis` content into collapsed sections, and then uses `PyGithub` and `GITHUB_TOKEN` to upsert that same body to the pull request.
+13. If any finding is `critical`, the comment step exits non-zero so the GitHub Action fails. With branch protection enabled for this check, the PR is blocked from merging.
 
 ## Modular Usage
 
@@ -211,6 +214,21 @@ Findings: critical `4`, high `14`, medium `3`, low `0`.
 | Severity | File | Line | Finding | Taint Path | CWE | Counter-Argument | Fix Suggestion |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | HIGH<br>PRE-EXISTING | `caretrack/db.py` | 44 | A database query is still built from user-controlled input with string concatenation in legacy code touched by this PR. | User-controlled database parameter (line 30) -> cursor.execute(query) (line 44) | CWE-89 | The query input is assembled from an internal enum rather than direct user input in this path, so exploitability may be limited. | Replace string-built queries with parameterized execution and keep untrusted values out of SQL text construction. |
+</details>
+```
+
+With cross-file taint tracing:
+
+```markdown
+<details>
+<summary>Extended Analysis (1)</summary>
+
+Low-confidence cross-file chains that originate in the diff and appear to reach a downstream sink:
+
+| File | Line | Confidence | Chain |
+| --- | --- | --- | --- |
+| `caretrack/admin.py` | 266 | low | preview_report_expression() [changed] -> export_report_pdf() [unchanged] -> subprocess.call() [sink] |
+
 </details>
 ```
 

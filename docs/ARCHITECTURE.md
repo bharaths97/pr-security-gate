@@ -11,6 +11,7 @@
 - Implemented and validated: optional AI finding enrichment step between triage and narrative
 - Implemented: optional terrain synthesis step between triage and enrichment, validated locally, in Docker, and on the live CareTrack path
 - Implemented: optional adversarial verification step between enrichment and narrative, validated locally, in Docker, with provider-backed smoke output, and on the live CareTrack path
+- Implemented: optional cross-file taint tracing step between adversarial verification and narrative, validated locally, in Docker, with provider-backed smoke output, and on the live CareTrack path
 - Implemented: live consumer-repo validation
 - Implemented: local-vs-cloud tradeoff documentation
 - Planned: deeper rule expansion
@@ -58,13 +59,17 @@ AI prompt content lives in `prompts/*.toml` instead of being hardcoded in Python
 
 `scanner/adversarial.py` reads `enriched-findings.json` or `terrain-findings.json`, optionally reads `domain_context.json`, and writes `verified-findings.json`. It makes one provider call per HIGH or CRITICAL finding, asks for the strongest evidence-based counter-argument, and applies only normalized `verdict`, `counter_argument`, and `adversarial_confidence` fields. LOW and MEDIUM findings pass through unchanged. If no matching provider key is configured, the prompt fails to load, a single provider call fails, or a response is malformed, the workflow leaves the affected findings unchanged and continues.
 
+### Cross-File Taint Tracing Stage
+
+`scanner/call_graph.py` reads `verified-findings.json`, optionally reads `domain_context.json`, and writes `call-graph-findings.json`. It builds a lightweight same-repo function index for Python and JavaScript/TypeScript, resolves outbound calls from changed functions, and asks the configured provider whether a downstream same-repo chain still appears to reach a dangerous sink. Matching chains are appended as low-confidence `origin: "cross-file"` observations. If no matching provider key is configured, a callee cannot be resolved, or a single provider call fails, the affected chain is skipped and the workflow continues.
+
 ### Narrative Stage
 
-`scanner/narrative.py` reads `triaged-findings.json`, `enriched-findings.json`, or `verified-findings.json`, optionally generates a short PR-level risk narrative with Anthropic or OpenAI, and writes `narrative-findings.json`. The reusable workflow controls provider selection with `ai-provider` and model selection with `anthropic-model` and `openai-model`. Prompt content is loaded from `prompts/narrative.toml` through the shared loader. When verified findings are present, the prompt includes adversarial verdict context automatically. If no matching provider key is configured, findings are empty, the prompt file is invalid, or the provider call fails, it writes `narrative: null` and the workflow continues normally.
+`scanner/narrative.py` reads `triaged-findings.json`, `enriched-findings.json`, `verified-findings.json`, or `call-graph-findings.json`, optionally generates a short PR-level risk narrative with Anthropic or OpenAI, and writes `narrative-findings.json`. The reusable workflow controls provider selection with `ai-provider` and model selection with `anthropic-model` and `openai-model`. Prompt content is loaded from `prompts/narrative.toml` through the shared loader. When verified or call-graph findings are present, the prompt includes the richer context automatically. If no matching provider key is configured, findings are empty, the prompt file is invalid, or the provider call fails, it writes `narrative: null` and the workflow continues normally.
 
 ### Comment Stage
 
-`scanner/comment.py` renders the markdown findings table for the pull request, prefers enriched finding/fix text when present, includes the optional narrative blockquote when present, shows `NEW` / `PRE-EXISTING` badges when terrain data exists, appends inline adversarial notes for sustained findings, and can move challenged or pre-existing findings into collapsed sections while keeping the critical gate unchanged. It can also preview that output locally in dry-run mode.
+`scanner/comment.py` renders the markdown findings table for the pull request, prefers enriched finding/fix text when present, includes the optional narrative blockquote when present, shows `NEW` / `PRE-EXISTING` badges when terrain data exists, appends inline adversarial notes for sustained findings, and can move challenged, pre-existing, or cross-file observations into collapsed sections while keeping the critical gate unchanged. It can also preview that output locally in dry-run mode.
 
 ### Detection Logic
 
@@ -85,6 +90,7 @@ AI prompt content lives in `prompts/*.toml` instead of being hardcoded in Python
 7. Optional terrain synthesis is generated from triaged findings plus changed-file content.
 8. Optional per-finding enrichment is generated from terrain-aware findings plus optional domain context.
 9. Optional adversarial verification is generated from enriched findings plus optional domain context.
-10. An optional AI risk narrative is generated from the verified findings.
-11. A markdown comment is rendered and posted to the pull request.
-12. The workflow fails when a critical finding exists.
+10. Optional cross-file taint tracing is generated from the verified findings plus same-repo call resolution.
+11. An optional AI risk narrative is generated from the call-graph findings.
+12. A markdown comment is rendered and posted to the pull request.
+13. The workflow fails when a critical finding exists.

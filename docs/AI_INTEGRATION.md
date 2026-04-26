@@ -14,6 +14,7 @@ The AI roadmap extends that pipeline in stages so the project gains better revie
 - Phase 3 finding enrichment is implemented and validated in the reusable workflow between triage and narrative
 - Phase 4 terrain synthesis is implemented, validated in local, Docker, and CareTrack GitHub Actions runs, and wires a new terrain step between triage and enrichment
 - Phase 5 adversarial verification is implemented on `ai-phase5-adversarial`, validated in local, Docker, provider-backed smoke, and CareTrack GitHub Actions runs, and wires a verifier step between enrichment and narrative
+- Phase 6 cross-file taint tracing is implemented on `ai-phase6-cross-file`, validated in local, Docker, provider-backed smoke, and CareTrack GitHub Actions runs, and wires a call-graph step between adversarial verification and narrative
 - AI prompts are centralized under `prompts/*.toml` and rendered through a shared allowlist-based loader
 - If no AI provider key is present or a provider call fails, the workflow falls back to the normal comment without weakening the gate
 
@@ -98,6 +99,22 @@ When verification succeeds, findings may gain:
 The PR comment keeps sustained findings in the main table with an inline adversarial note, moves downgraded non-critical findings into a collapsed `Challenged findings` section, and keeps downgraded CRITICAL findings in the main table so the deterministic critical gate is unchanged.
 
 If no provider key is present, the prompt fails to load, the provider fails, or the model returns malformed JSON for one finding, the workflow degrades gracefully. No-provider mode writes the original enriched findings through unchanged. Per-finding failures leave only that finding without adversarial fields and continue.
+
+## Phase 6 Cross-File Taint Tracing
+
+`scanner/call_graph.py` runs after adversarial verification and before narrative. It reads `verified-findings.json`, indexes changed and same-repo Python or JavaScript/TypeScript functions, follows outbound calls up to `CALL_GRAPH_MAX_DEPTH`, and writes `call-graph-findings.json`.
+
+When cross-file tracing succeeds, the output may gain appended low-confidence observations with:
+
+- `origin: "cross-file"`
+- `confidence: "low"`
+- `chain`
+- `hops`
+- `sink_description`
+
+These observations never change the deterministic gate. They render under a collapsed `Extended Analysis` section in the PR comment, while the main findings table and `summary.has_critical` behavior remain unchanged.
+
+If no provider key is present, the prompt fails to load, a chain cannot be resolved, the provider fails, or one provider response is malformed, the workflow degrades gracefully. No-provider mode writes the original verified findings through unchanged. Per-chain failures skip only the affected chain and continue.
 
 ## Prompt Management
 
