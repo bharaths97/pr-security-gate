@@ -478,9 +478,8 @@ def normalize_threat_model_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "generated": True,
         "entry_points_added": normalize_entry_points(payload.get("entry_points_added")),
-        "assets_at_risk": normalize_string_list(payload.get("assets_at_risk")),
-        "threat_actors": normalize_string_list(payload.get("threat_actors")),
         "blast_radius": trim_to_one_sentence(str(payload.get("blast_radius", "")), ensure_terminal_period=True),
+        "stride_findings": normalize_stride_findings(payload.get("stride_findings")),
         "mitigations_present": normalize_string_list(payload.get("mitigations_present")),
         "mitigations_absent": normalize_string_list(payload.get("mitigations_absent")),
         "domain_risks": normalize_string_list(payload.get("domain_risks")),
@@ -491,6 +490,40 @@ def render_inline_list(values: list[str], fallback: str) -> str:
     return ", ".join(values) if values else fallback
 
 
+def normalize_stride_findings(value: Any) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+
+    normalized: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str, str, str]] = set()
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        category = one_line_text(item.get("category", ""))
+        evidence = one_line_text(item.get("evidence", ""))
+        why_it_applies = trim_to_one_sentence(str(item.get("why_it_applies", "")), ensure_terminal_period=True)
+        reviewer_action = trim_to_one_sentence(str(item.get("reviewer_action", "")), ensure_terminal_period=True)
+        confidence = one_line_text(item.get("confidence", "")).lower()
+        if confidence not in {"low", "medium", "high"}:
+            confidence = "low"
+        if not category or not evidence or not why_it_applies or not reviewer_action:
+            continue
+        key = (category, evidence, why_it_applies, reviewer_action, confidence)
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(
+            {
+                "category": category,
+                "evidence": evidence,
+                "why_it_applies": why_it_applies,
+                "reviewer_action": reviewer_action,
+                "confidence": confidence,
+            }
+        )
+    return normalized
+
+
 def render_entry_points(entry_points: list[dict[str, Any]]) -> str:
     if not entry_points:
         return "0 — none identified in changed code."
@@ -499,6 +532,30 @@ def render_entry_points(entry_points: list[dict[str, Any]]) -> str:
         for item in entry_points
     )
     return f"{len(entry_points)} — {rendered}"
+
+
+def build_stride_table(stride_findings: list[dict[str, str]]) -> str:
+    columns = ["STRIDE", "Evidence", "Why It Applies", "Reviewer Action"]
+    header = "| " + " | ".join(columns) + " |\n| " + " | ".join(["---"] * len(columns)) + " |"
+    rows = []
+    for finding in stride_findings:
+        reviewer_action = (
+            f"{finding['reviewer_action']} "
+            f"<sub><em>Confidence: {escape_pipes(finding['confidence'])}</em></sub>"
+        )
+        rows.append(
+            "| "
+            + " | ".join(
+                [
+                    escape_pipes(finding["category"]),
+                    escape_pipes(finding["evidence"]),
+                    escape_pipes(finding["why_it_applies"]),
+                    reviewer_action,
+                ]
+            )
+            + " |"
+        )
+    return "\n".join([header, *rows])
 
 
 def build_threat_model_comment(payload: dict[str, Any]) -> str:
@@ -513,17 +570,25 @@ def build_threat_model_comment(payload: dict[str, Any]) -> str:
         f"**Blast radius:** {normalized['blast_radius'] or 'Unable to determine from the supplied PR artifacts.'}",
         "",
         f"**Entry points added:** {render_entry_points(normalized['entry_points_added'])}",
-        f"**Assets at risk:** {render_inline_list(normalized['assets_at_risk'], 'none identified')}",
-        f"**Relevant threat actors:** {render_inline_list(normalized['threat_actors'], 'none identified')}",
         "",
-        "<details>",
-        "<summary>Mitigations</summary>",
-        "",
-        f"Present: {render_inline_list(normalized['mitigations_present'], 'none noted')}",
-        f"Absent: {render_inline_list(normalized['mitigations_absent'], 'none noted')}",
-        "",
-        "</details>",
     ]
+
+    if normalized["stride_findings"]:
+        lines.extend([build_stride_table(normalized["stride_findings"]), ""])
+    else:
+        lines.extend(["No grounded STRIDE categories identified from the supplied PR artifacts.", ""])
+
+    lines.extend(
+        [
+            "<details>",
+            "<summary>Mitigations</summary>",
+            "",
+            f"Present: {render_inline_list(normalized['mitigations_present'], 'none noted')}",
+            f"Absent: {render_inline_list(normalized['mitigations_absent'], 'none noted')}",
+            "",
+            "</details>",
+        ]
+    )
 
     if normalized["domain_risks"]:
         lines.extend(

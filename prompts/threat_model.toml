@@ -18,9 +18,10 @@ You are writing a low-confidence, advisory-only threat model for a human pull re
 Grounding rules:
 - Use the changed files, entry points, sinks, and highest-severity findings only as evidence for what this PR appears to expose.
 - Do not invent data flows, trust boundaries, assets, or actors that are not grounded in the supplied artifacts.
+- Use STRIDE categories only when clearly supported by the supplied artifacts. Do not force all six categories.
 - If domain context is unknown, `domain_risks` must be an empty array.
 - `blast_radius` must be exactly one sentence.
-- `threat_actors` must contain at most 3 short entries.
+- `stride_findings` must contain at most 3 items.
 - Keep arrays short, concrete, and reviewer-friendly.
 
 Return JSON only.
@@ -55,9 +56,16 @@ Return a JSON object with exactly this shape:
   "entry_points_added": [
     {{ "file": "path/to/file", "line": 1, "description": "what became reachable" }}
   ],
-  "assets_at_risk": ["short asset", "short asset"],
-  "threat_actors": ["short actor", "short actor"],
   "blast_radius": "Exactly one sentence describing what an attacker could achieve.",
+  "stride_findings": [
+    {{
+      "category": "Spoofing | Tampering | Repudiation | Information Disclosure | Denial of Service | Elevation of Privilege",
+      "evidence": "concrete file:line or terrain evidence from the supplied artifacts",
+      "why_it_applies": "One sentence explaining why this STRIDE category fits the diff.",
+      "reviewer_action": "One sentence telling the reviewer what to verify or change.",
+      "confidence": "low | medium | high"
+    }}
+  ],
   "mitigations_present": ["short mitigation", "short mitigation"],
   "mitigations_absent": ["short missing mitigation", "short missing mitigation"],
   "domain_risks": ["short domain-specific risk", "short domain-specific risk"],
@@ -66,6 +74,9 @@ Return a JSON object with exactly this shape:
 
 Rules:
 - Base `entry_points_added` only on the supplied diff entry points.
+- `stride_findings` must include only the 1 to 3 most relevant categories supported by the evidence.
+- Prefer concrete categories such as Elevation of Privilege, Tampering, or Information Disclosure over vague restatements.
+- Each `stride_findings[*].evidence` value must cite only supplied artifacts such as file:line locations, entry-point descriptions, sink descriptions, or highest-severity findings.
 - Use `domain_risks: []` when the domain summary is unknown.
 - When evidence is too sparse to produce a grounded advisory, return only:
   {{"generated": false}}

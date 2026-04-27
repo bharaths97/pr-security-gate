@@ -286,9 +286,23 @@ class CommentTests(unittest.TestCase):
                     "description": "HTTP GET /export route parameter",
                 }
             ],
-            "assets_at_risk": ["patient records", "session tokens"],
-            "threat_actors": ["unauthenticated external users", "authenticated low-privilege users"],
             "blast_radius": "An attacker could trigger bulk patient record export through the new route.",
+            "stride_findings": [
+                {
+                    "category": "Elevation of Privilege",
+                    "evidence": "caretrack/routes/export.py:18 request data reaches a privileged export path",
+                    "why_it_applies": "User-controlled input can trigger a high-impact export flow.",
+                    "reviewer_action": "Verify admin-only authorization and remove direct execution paths.",
+                    "confidence": "high",
+                },
+                {
+                    "category": "Information Disclosure",
+                    "evidence": "caretrack/routes/export.py:48 bulk record export response",
+                    "why_it_applies": "The new endpoint appears to expose sensitive records.",
+                    "reviewer_action": "Confirm record-level access control before merge.",
+                    "confidence": "medium",
+                },
+            ],
             "mitigations_present": ["admin role check"],
             "mitigations_absent": ["download rate limiting"],
             "domain_risks": ["HIPAA exposure if exploited"],
@@ -301,6 +315,9 @@ class CommentTests(unittest.TestCase):
         self.assertIn("## Threat Model", body)
         self.assertIn("**Blast radius:**", body)
         self.assertIn("HTTP GET /export route parameter", body)
+        self.assertIn("| STRIDE | Evidence | Why It Applies | Reviewer Action |", body)
+        self.assertIn("Elevation of Privilege", body)
+        self.assertIn("Confidence: high", body)
         self.assertIn("<summary>Mitigations</summary>", body)
         self.assertIn("<summary>Domain risks</summary>", body)
         self.assertIn("> Advisory only — does not affect gate decision.", body)
@@ -392,9 +409,16 @@ class CommentTests(unittest.TestCase):
                     "description": "HTTP GET /export route parameter",
                 }
             ],
-            "assets_at_risk": ["patient records"],
-            "threat_actors": ["unauthenticated external users"],
             "blast_radius": "An attacker could trigger bulk patient record export through the new route.",
+            "stride_findings": [
+                {
+                    "category": "Tampering",
+                    "evidence": "caretrack/routes/export.py:18 request data influences export parameters",
+                    "why_it_applies": "Attackers can modify export scope through crafted input.",
+                    "reviewer_action": "Lock export parameters to a validated allowlist.",
+                    "confidence": "medium",
+                }
+            ],
             "mitigations_present": ["admin role check"],
             "mitigations_absent": ["download rate limiting"],
             "domain_risks": ["HIPAA exposure if exploited"],

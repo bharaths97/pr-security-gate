@@ -92,12 +92,53 @@ class ThreatModelTests(unittest.TestCase):
                         "description": "HTTP GET /export route parameter",
                     }
                 ],
-                "assets_at_risk": ["patient records", "session tokens", "patient records"],
+                "stride_findings": [
+                    {
+                        "category": "Elevation of Privilege",
+                        "evidence": "caretrack/routes/export.py:18 request data reaches a privileged export path",
+                        "why_it_applies": "User-controlled input can trigger a high-impact export flow. Extra sentence.",
+                        "reviewer_action": "Verify admin-only authorization and remove direct execution paths. Extra sentence.",
+                        "confidence": "high",
+                    },
+                    {
+                        "category": "Information Disclosure",
+                        "evidence": "caretrack/routes/export.py:48 bulk record export response",
+                        "why_it_applies": "The new endpoint appears to expose sensitive records.",
+                        "reviewer_action": "Confirm record-level access control before merge.",
+                        "confidence": "medium",
+                    },
+                    {
+                        "category": "Information Disclosure",
+                        "evidence": "duplicate row should be removed",
+                        "why_it_applies": "Duplicate row should be removed.",
+                        "reviewer_action": "Duplicate row should be removed.",
+                        "confidence": "medium",
+                    },
+                    {
+                        "category": "Tampering",
+                        "evidence": "caretrack/routes/export.py:18 request data influences export parameters",
+                        "why_it_applies": "Attackers can modify export scope through crafted input.",
+                        "reviewer_action": "Lock export parameters to a validated allowlist.",
+                        "confidence": "medium",
+                    },
+                    {
+                        "category": "Spoofing",
+                        "evidence": "extra row should be trimmed by max size",
+                        "why_it_applies": "Extra row should be trimmed.",
+                        "reviewer_action": "Extra row should be trimmed.",
+                        "confidence": "low",
+                    },
+                    {
+                        "category": "Made Up Category",
+                        "evidence": "should be discarded",
+                        "why_it_applies": "should be discarded",
+                        "reviewer_action": "should be discarded",
+                        "confidence": "high",
+                    },
+                ],
+                "assets_at_risk": ["legacy field should be ignored"],
                 "threat_actors": [
-                    "unauthenticated external users",
-                    "authenticated low-privilege users",
-                    "support staff",
-                    "extra actor that should be trimmed",
+                    "legacy field should be ignored"
                 ],
                 "blast_radius": "An attacker could trigger bulk patient record export through the new route. Additional sentence.",
                 "mitigations_present": ["admin role check"],
@@ -120,8 +161,12 @@ class ThreatModelTests(unittest.TestCase):
         self.assertTrue(output["generated"])
         self.assertEqual(output["pr_title"], "Add patient export route")
         self.assertEqual(len(output["entry_points_added"]), 1)
-        self.assertEqual(output["assets_at_risk"], ["patient records", "session tokens"])
-        self.assertEqual(len(output["threat_actors"]), 3)
+        self.assertEqual(len(output["stride_findings"]), 3)
+        self.assertEqual(output["stride_findings"][0]["category"], "Elevation of Privilege")
+        self.assertEqual(
+            output["stride_findings"][0]["why_it_applies"],
+            "User-controlled input can trigger a high-impact export flow.",
+        )
         self.assertEqual(
             output["blast_radius"],
             "An attacker could trigger bulk patient record export through the new route.",

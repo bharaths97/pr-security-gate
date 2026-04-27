@@ -20,6 +20,15 @@ MAX_CHANGED_FILES = 50
 MAX_ENTRY_POINTS = 20
 MAX_SINKS = 20
 MAX_PRIORITY_FINDINGS = 10
+MAX_STRIDE_FINDINGS = 3
+STRIDE_CATEGORIES = {
+    "spoofing": "Spoofing",
+    "tampering": "Tampering",
+    "repudiation": "Repudiation",
+    "information disclosure": "Information Disclosure",
+    "denial of service": "Denial of Service",
+    "elevation of privilege": "Elevation of Privilege",
+}
 select_provider = ai_provider.select_provider
 
 
@@ -310,6 +319,49 @@ def normalize_entry_points_added(value: Any) -> list[dict[str, Any]]:
     return sorted(normalized, key=lambda item: (item["file"], item["line"], item["description"]))
 
 
+def normalize_stride_category(value: Any) -> str | None:
+    cleaned = one_line_text(value).lower()
+    if not cleaned:
+        return None
+    return STRIDE_CATEGORIES.get(cleaned)
+
+
+def normalize_stride_findings(value: Any) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+
+    normalized: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str, str, str]] = set()
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        category = normalize_stride_category(item.get("category"))
+        evidence = one_line_text(item.get("evidence", ""))
+        why_it_applies = trim_to_one_sentence(item.get("why_it_applies", ""))
+        reviewer_action = trim_to_one_sentence(item.get("reviewer_action", ""))
+        confidence = one_line_text(item.get("confidence", "")).lower()
+        if confidence not in {"low", "medium", "high"}:
+            confidence = "low"
+        if not category or not evidence or not why_it_applies or not reviewer_action:
+            continue
+        key = (category, evidence, why_it_applies, reviewer_action, confidence)
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(
+            {
+                "category": category,
+                "evidence": evidence,
+                "why_it_applies": why_it_applies,
+                "reviewer_action": reviewer_action,
+                "confidence": confidence,
+            }
+        )
+        if len(normalized) >= MAX_STRIDE_FINDINGS:
+            break
+    return normalized
+
+
 def trim_to_one_sentence(text: Any) -> str:
     cleaned = one_line_text(text)
     if not cleaned:
@@ -339,9 +391,8 @@ def normalize_threat_model(
         "pr_title": one_line_text(payload.get("pr_title", pr_title)) or one_line_text(pr_title),
         "domain_summary": one_line_text(payload.get("domain_summary", domain_summary)),
         "entry_points_added": normalize_entry_points_added(payload.get("entry_points_added")),
-        "assets_at_risk": normalize_text_list(payload.get("assets_at_risk")),
-        "threat_actors": normalize_text_list(payload.get("threat_actors"), limit=3),
         "blast_radius": trim_to_one_sentence(payload.get("blast_radius", "")),
+        "stride_findings": normalize_stride_findings(payload.get("stride_findings")),
         "mitigations_present": normalize_text_list(payload.get("mitigations_present")),
         "mitigations_absent": normalize_text_list(payload.get("mitigations_absent")),
         "domain_risks": normalize_text_list(payload.get("domain_risks")),
