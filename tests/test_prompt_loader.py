@@ -244,6 +244,24 @@ class PromptLoaderTests(unittest.TestCase):
         self.assertIn('{"functions": [{"name": "search_users"}]}', rendered)
         self.assertIn("risk_tier=high", rendered)
 
+    def test_render_threat_model_prompt_accepts_feature_variables(self) -> None:
+        rendered = prompt_loader.render(
+            "threat_model",
+            "user_template",
+            pr_title="Add export endpoint",
+            pr_description_section="PR description:\nAdds a bulk export route.",
+            domain_summary="app_domain=healthcare; risk_tier=high",
+            changed_files_block='{"changed_files":["caretrack/routes/export.py"]}',
+            entry_points_block='{"entry_points_added":[{"file":"caretrack/routes/export.py","line":18,"description":"HTTP GET /export"}]}',
+            sinks_block='{"reachable_sinks":[{"file":"caretrack/routes/export.py","line":48,"description":"bulk export response"}]}',
+            highest_severity_block='{"highest_severity":"HIGH","count":1,"findings":[{"file":"caretrack/routes/export.py","line":48,"finding":"Export may expose patient records."}]}',
+        )
+
+        self.assertIn("Add export endpoint", rendered)
+        self.assertIn("bulk export route", rendered)
+        self.assertIn("entry_points_added", rendered)
+        self.assertIn("reachable_sinks", rendered)
+
 
 if __name__ == "__main__":
     unittest.main()

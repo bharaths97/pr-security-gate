@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 COMMENT_MARKER = "<!-- pr-security-gate -->"
+THREAT_MODEL_COMMENT_MARKER = "<!-- pr-threat-model -->"
 
 
 def parse_args() -> argparse.Namespace:
@@ -25,6 +26,10 @@ def parse_args() -> argparse.Namespace:
         "--dry-run",
         action="store_true",
         help="Render the markdown comment without posting it to GitHub.",
+    )
+    parser.add_argument(
+        "--threat-model",
+        help="Optional threat model JSON path for a separate advisory comment.",
     )
     return parser.parse_args()
 
@@ -421,7 +426,123 @@ def build_comment_body(payload: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def upsert_comment(repo_name: str, pr_number: int, token: str, body: str) -> None:
+def normalize_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        cleaned = one_line_text(item)
+        if not cleaned or cleaned.lower() in {"unknown", "none", "null"}:
+            continue
+        if cleaned in seen:
+            continue
+        seen.add(cleaned)
+        normalized.append(cleaned)
+    return normalized
+
+
+def normalize_entry_points(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+
+    normalized: list[dict[str, Any]] = []
+    seen: set[tuple[str, int, str]] = set()
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        file_path = one_line_text(item.get("file", ""))
+        description = one_line_text(item.get("description", ""))
+        line_value = item.get("line")
+        if isinstance(line_value, int):
+            line = line_value
+        elif isinstance(line_value, str) and line_value.strip().isdigit():
+            line = int(line_value.strip())
+        else:
+            line = 0
+        if not file_path or line <= 0 or not description:
+            continue
+        key = (file_path, line, description)
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append({"file": file_path, "line": line, "description": description})
+    return normalized
+
+
+def normalize_threat_model_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    if payload.get("generated") is not True:
+        return {"generated": False}
+
+    return {
+        "generated": True,
+        "entry_points_added": normalize_entry_points(payload.get("entry_points_added")),
+        "assets_at_risk": normalize_string_list(payload.get("assets_at_risk")),
+        "threat_actors": normalize_string_list(payload.get("threat_actors")),
+        "blast_radius": trim_to_one_sentence(str(payload.get("blast_radius", "")), ensure_terminal_period=True),
+        "mitigations_present": normalize_string_list(payload.get("mitigations_present")),
+        "mitigations_absent": normalize_string_list(payload.get("mitigations_absent")),
+        "domain_risks": normalize_string_list(payload.get("domain_risks")),
+    }
+
+
+def render_inline_list(values: list[str], fallback: str) -> str:
+    return ", ".join(values) if values else fallback
+
+
+def render_entry_points(entry_points: list[dict[str, Any]]) -> str:
+    if not entry_points:
+        return "0 — none identified in changed code."
+    rendered = "; ".join(
+        f"`{item['file']}:{item['line']}` {escape_pipes(item['description'])}"
+        for item in entry_points
+    )
+    return f"{len(entry_points)} — {rendered}"
+
+
+def build_threat_model_comment(payload: dict[str, Any]) -> str:
+    normalized = normalize_threat_model_payload(payload)
+    if not normalized.get("generated"):
+        return ""
+
+    lines = [
+        THREAT_MODEL_COMMENT_MARKER,
+        "## Threat Model",
+        "",
+        f"**Blast radius:** {normalized['blast_radius'] or 'Unable to determine from the supplied PR artifacts.'}",
+        "",
+        f"**Entry points added:** {render_entry_points(normalized['entry_points_added'])}",
+        f"**Assets at risk:** {render_inline_list(normalized['assets_at_risk'], 'none identified')}",
+        f"**Relevant threat actors:** {render_inline_list(normalized['threat_actors'], 'none identified')}",
+        "",
+        "<details>",
+        "<summary>Mitigations</summary>",
+        "",
+        f"Present: {render_inline_list(normalized['mitigations_present'], 'none noted')}",
+        f"Absent: {render_inline_list(normalized['mitigations_absent'], 'none noted')}",
+        "",
+        "</details>",
+    ]
+
+    if normalized["domain_risks"]:
+        lines.extend(
+            [
+                "",
+                "<details>",
+                "<summary>Domain risks</summary>",
+                "",
+                *[f"- {risk}" for risk in normalized["domain_risks"]],
+                "",
+                "</details>",
+            ]
+        )
+
+    lines.extend(["", "> Advisory only — does not affect gate decision."])
+    return "\n".join(lines)
+
+
+def upsert_marked_comment(repo_name: str, pr_number: int, token: str, body: str, marker: str) -> None:
     from github import Github
 
     client = Github(token)
@@ -429,15 +550,33 @@ def upsert_comment(repo_name: str, pr_number: int, token: str, body: str) -> Non
     pull_request = repo.get_pull(pr_number)
 
     for comment in pull_request.get_issue_comments():
-        if COMMENT_MARKER in comment.body:
+        if marker in comment.body:
             comment.edit(body)
             return
 
     pull_request.create_issue_comment(body)
 
 
+def upsert_comment(repo_name: str, pr_number: int, token: str, body: str) -> None:
+    upsert_marked_comment(repo_name, pr_number, token, body, COMMENT_MARKER)
+
+
 def render_comment(payload: dict[str, Any], has_critical: bool | None = None) -> str:
     return build_comment_body(normalize_payload(payload, has_critical=has_critical))
+
+
+def build_combined_output(main_body: str, threat_model_body: str) -> str:
+    if not threat_model_body:
+        return main_body
+    return f"{main_body}\n\n{threat_model_body}"
+
+
+def load_optional_json_object(path: str) -> dict[str, Any] | None:
+    json_path = Path(path)
+    if not json_path.exists():
+        return None
+    loaded = json.loads(json_path.read_text(encoding="utf-8"))
+    return loaded if isinstance(loaded, dict) else None
 
 
 def main() -> int:
@@ -445,12 +584,19 @@ def main() -> int:
     payload = json.loads(Path(args.input).read_text(encoding="utf-8"))
     payload = normalize_payload(payload)
     body = build_comment_body(payload)
+    threat_model_body = ""
+
+    if args.threat_model:
+        threat_model_payload = load_optional_json_object(args.threat_model)
+        if threat_model_payload is not None:
+            threat_model_body = build_threat_model_comment(threat_model_payload)
+    combined_output = build_combined_output(body, threat_model_body)
 
     if args.output:
-        Path(args.output).write_text(body, encoding="utf-8")
+        Path(args.output).write_text(combined_output, encoding="utf-8")
 
     if args.dry_run:
-        print(body)
+        print(combined_output)
         return 1 if payload["summary"]["has_critical"] else 0
 
     token = os.getenv("GITHUB_TOKEN")
@@ -461,6 +607,14 @@ def main() -> int:
         raise SystemExit("GITHUB_TOKEN, GITHUB_REPOSITORY, and PR_NUMBER must be set unless --dry-run is used.")
 
     upsert_comment(repo_name, int(pr_number), token, body)
+    if threat_model_body:
+        upsert_marked_comment(
+            repo_name,
+            int(pr_number),
+            token,
+            threat_model_body,
+            THREAT_MODEL_COMMENT_MARKER,
+        )
 
     return 1 if payload["summary"]["has_critical"] else 0
 

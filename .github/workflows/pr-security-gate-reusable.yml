@@ -33,6 +33,11 @@ on:
         required: false
         type: string
         default: gpt-4o-mini
+      run-threat-model:
+        description: "Generate an optional advisory PR-level threat model comment."
+        required: false
+        type: boolean
+        default: false
     secrets:
       github-token:
         required: true
@@ -197,6 +202,41 @@ jobs:
             --input call-graph-findings.json \
             --output narrative-findings.json
 
+      - name: Generate PR threat model
+        if: inputs.run-threat-model
+        env:
+          AI_PROVIDER: ${{ inputs.ai-provider }}
+          ANTHROPIC_API_KEY: ${{ secrets.anthropic-api-key }}
+          ANTHROPIC_MODEL: ${{ inputs.anthropic-model }}
+          OPENAI_API_KEY: ${{ secrets.openai-api-key }}
+          OPENAI_MODEL: ${{ inputs.openai-model }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_DESCRIPTION: ${{ github.event.pull_request.body }}
+        run: |
+          python .pr-security-gate/scanner/threat_model.py \
+            --domain-context domain_context.json \
+            --terrain terrain-findings.json \
+            --triage triaged-findings.json \
+            --pr-title "$PR_TITLE" \
+            --pr-description "$PR_DESCRIPTION" \
+            --output threat-model.json
+
+      - name: Upload findings artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-security-gate-findings
+          if-no-files-found: warn
+          path: |
+            domain_context.json
+            scan-results.json
+            triaged-findings.json
+            terrain-findings.json
+            enriched-findings.json
+            verified-findings.json
+            call-graph-findings.json
+            narrative-findings.json
+            threat-model.json
+
       - name: Comment on pull request
         env:
           GITHUB_TOKEN: ${{ secrets.github-token }}
@@ -204,4 +244,5 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           python .pr-security-gate/scanner/comment.py \
-            --input narrative-findings.json
+            --input narrative-findings.json \
+            --threat-model threat-model.json

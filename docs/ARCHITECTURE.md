@@ -12,6 +12,7 @@
 - Implemented: optional terrain synthesis step between triage and enrichment, validated locally, in Docker, and on the live CareTrack path
 - Implemented: optional adversarial verification step between enrichment and narrative, validated locally, in Docker, with provider-backed smoke output, and on the live CareTrack path
 - Implemented: optional cross-file taint tracing step between adversarial verification and narrative, validated locally, in Docker, with provider-backed smoke output, and on the live CareTrack path
+- Implemented: optional PR-level threat model advisory step, validated locally and in Docker
 - Implemented: live consumer-repo validation
 - Implemented: local-vs-cloud tradeoff documentation
 - Planned: deeper rule expansion
@@ -67,9 +68,15 @@ AI prompt content lives in `prompts/*.toml` instead of being hardcoded in Python
 
 `scanner/narrative.py` reads `triaged-findings.json`, `enriched-findings.json`, `verified-findings.json`, or `call-graph-findings.json`, optionally generates a short PR-level risk narrative with Anthropic or OpenAI, and writes `narrative-findings.json`. The reusable workflow controls provider selection with `ai-provider` and model selection with `anthropic-model` and `openai-model`. Prompt content is loaded from `prompts/narrative.toml` through the shared loader. When verified or call-graph findings are present, the prompt includes the richer context automatically. If no matching provider key is configured, findings are empty, the prompt file is invalid, or the provider call fails, it writes `narrative: null` and the workflow continues normally.
 
+### Threat Model Stage
+
+`scanner/threat_model.py` reads `domain_context.json`, `terrain-findings.json`, and `triage-findings.json` plus the PR title and optional PR description passed from the GitHub event context. It makes one AI call via `scanner/ai_provider.py` and writes `threat-model.json` with blast radius, entry points added, assets at risk, threat actors, mitigations present and absent, and domain-specific risks. If no provider key is configured, a required input file is missing, or the AI call fails, it writes `{"generated": false}` and exits 0. The threat model step is opt-in via the `run-threat-model` boolean input on the reusable workflow.
+
+The threat model reasons over the entire PR diff rather than per-finding. It complements the security gate by answering what an attacker could achieve rather than what individual bugs were found.
+
 ### Comment Stage
 
-`scanner/comment.py` renders the markdown findings table for the pull request, prefers enriched finding/fix text when present, includes the optional narrative blockquote when present, shows `NEW` / `PRE-EXISTING` badges when terrain data exists, appends inline adversarial notes for sustained findings, and can move challenged, pre-existing, or cross-file observations into collapsed sections while keeping the critical gate unchanged. It can also preview that output locally in dry-run mode.
+`scanner/comment.py` renders the security gate findings table, applies enriched text where present, shows terrain badges, appends adversarial notes, and posts the result as a PR comment under `<!-- pr-security-gate -->`. When `--threat-model` is provided and the threat model file has `generated: true`, it also posts a separate advisory comment under `<!-- pr-threat-model -->`. The two comments use independent markers and are upserted separately so they can be updated on subsequent pushes without overwriting each other. It can preview both outputs locally in dry-run mode. The critical gate behavior is driven only by `summary.has_critical` and is unaffected by threat model output.
 
 ### Detection Logic
 
@@ -92,5 +99,6 @@ AI prompt content lives in `prompts/*.toml` instead of being hardcoded in Python
 9. Optional adversarial verification is generated from enriched findings plus optional domain context.
 10. Optional cross-file taint tracing is generated from the verified findings plus same-repo call resolution.
 11. An optional AI risk narrative is generated from the call-graph findings.
-12. A markdown comment is rendered and posted to the pull request.
-13. The workflow fails when a critical finding exists.
+12. An optional PR-level threat model advisory is generated from existing pipeline artifacts and PR metadata.
+13. A markdown comment is rendered and posted to the pull request. If a threat model advisory was generated, it is posted as a separate PR comment.
+14. The workflow fails when a critical finding exists. The threat model advisory does not affect this.

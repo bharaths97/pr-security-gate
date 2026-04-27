@@ -15,6 +15,7 @@ The AI roadmap extends that pipeline in stages so the project gains better revie
 - Phase 4 terrain synthesis is implemented, validated in local, Docker, and CareTrack GitHub Actions runs, and wires a new terrain step between triage and enrichment
 - Phase 5 adversarial verification is implemented on `ai-phase5-adversarial`, validated in local, Docker, provider-backed smoke, and CareTrack GitHub Actions runs, and wires a verifier step between enrichment and narrative
 - Phase 6 cross-file taint tracing is implemented on `ai-phase6-cross-file`, validated in local, Docker, provider-backed smoke, and CareTrack GitHub Actions runs, and wires a call-graph step between adversarial verification and narrative
+- Phase 7 PR threat model advisory is implemented, validated locally and in Docker, and wired into the reusable workflow as an opt-in step after terrain
 - AI prompts are centralized under `prompts/*.toml` and rendered through a shared allowlist-based loader
 - If no AI provider key is present or a provider call fails, the workflow falls back to the normal comment without weakening the gate
 
@@ -117,6 +118,28 @@ These observations never change the deterministic gate. They render under a coll
 
 If no provider key is present, the prompt fails to load, a chain cannot be resolved, the provider fails, or one provider response is malformed, the workflow degrades gracefully. No-provider mode writes the original verified findings through unchanged. Per-chain failures skip only the affected chain and continue.
 
+## Phase 7 PR Threat Model
+
+`scanner/threat_model.py` is an optional advisory step that runs after terrain synthesis. It reads `domain_context.json`, `terrain-findings.json`, and `triage-findings.json`, takes the PR title and optional PR description as CLI arguments, and makes one AI call to generate a PR-scoped attack surface analysis.
+
+The threat model is complementary to the security gate rather than a replacement for it. The security gate reasons per-finding — it tells you what code is broken. The threat model reasons per-PR — it tells you what became reachable and what an attacker could achieve with this diff.
+
+When the threat model succeeds, `threat-model.json` contains:
+
+- `blast_radius` — one sentence describing the worst realistic outcome
+- `entry_points_added` — new touchpoints this PR exposed, with file and line
+- `assets_at_risk` — data or systems an attacker could reach
+- `threat_actors` — up to three actors who would realistically exploit this
+- `mitigations_present` — existing defenses observed in the changed code
+- `mitigations_absent` — expected defenses that are missing
+- `domain_risks` — application-specific risks derived from `domain_context.json` (empty when domain is unknown)
+
+The output is posted as a separate PR comment under `<!-- pr-threat-model -->`, distinct from the `<!-- pr-security-gate -->` security gate comment. This keeps the security gate results clean while giving the reviewer a separate advisory surface.
+
+The step is opt-in via `run-threat-model: true` in the reusable workflow. It defaults to `false`. If no provider key is configured, a required input artifact is missing, or the AI call fails, the step writes `{"generated": false}` and exits 0. The threat model advisory never causes the workflow to fail.
+
+PR description is treated as untrusted input. It is wrapped in nonce-tagged XML delimiters by `scanner/prompt_loader.py` before prompt substitution so it cannot override prompt instructions.
+
 ## Prompt Management
 
 Prompt text is versioned separately from Python logic under `prompts/*.toml`. `scanner/prompt_loader.py` validates prompt structure, caches parsed TOML, enforces a per-prompt variable allowlist, strips control characters from injected values, and caps interpolation size before provider calls are made.
@@ -131,6 +154,7 @@ That keeps prompt changes visible in isolated diffs and narrows the blast radius
 4. Terrain synthesis
 5. Adversarial verification
 6. Optional cross-file reasoning
+7. PR-level threat model advisory
 
 ## Why This Order
 
@@ -147,6 +171,7 @@ Later phases build deeper contextual reasoning and better prioritization, but th
 | Terrain synthesis | source-to-sink reasoning in changed files | changed-file scan data |
 | Adversarial verification | challenge and validate finding quality | best with terrain output |
 | Cross-file reasoning | broader multi-file context | optional later enhancement |
+| PR threat model | attack surface delta, blast radius, threat actors | terrain output + domain context + PR metadata |
 
 ## Design Principles
 

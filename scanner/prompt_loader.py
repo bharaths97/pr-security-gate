@@ -51,6 +51,15 @@ ALLOWED_VARIABLES = {
         "sink_description",
     },
     "call_graph": {"domain_summary", "max_depth", "changed_function_block", "chain_block"},
+    "threat_model": {
+        "pr_title",
+        "pr_description_section",
+        "domain_summary",
+        "changed_files_block",
+        "entry_points_block",
+        "sinks_block",
+        "highest_severity_block",
+    },
 }
 _PROMPT_CACHE: dict[str, dict[str, Any]] = {}
 SECTION_FORGERY_RE = re.compile(r"^(?:SYSTEM|USER|ASSISTANT):.*$")
@@ -77,6 +86,8 @@ SOURCE_LABELS = {
     "enriched_finding": "prior-ai-output",
     "enriched_fix": "prior-ai-output",
     "risk_context": "prior-ai-output",
+    "entry_points_block": "prior-ai-output",
+    "sinks_block": "prior-ai-output",
     "lines": "semgrep-scan-output",
     "file_content": "semgrep-scan-output",
 }

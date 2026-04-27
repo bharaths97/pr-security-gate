@@ -275,6 +275,41 @@ class CommentTests(unittest.TestCase):
         self.assertIn("| - |", body)
         self.assertNotIn("PRE-EXISTING", body)
 
+    def test_build_threat_model_comment_renders_separate_advisory_comment(self) -> None:
+        threat_payload = {
+            "pr_title": "Add patient export route",
+            "domain_summary": "healthcare scheduling with PHI access",
+            "entry_points_added": [
+                {
+                    "file": "caretrack/routes/export.py",
+                    "line": 18,
+                    "description": "HTTP GET /export route parameter",
+                }
+            ],
+            "assets_at_risk": ["patient records", "session tokens"],
+            "threat_actors": ["unauthenticated external users", "authenticated low-privilege users"],
+            "blast_radius": "An attacker could trigger bulk patient record export through the new route.",
+            "mitigations_present": ["admin role check"],
+            "mitigations_absent": ["download rate limiting"],
+            "domain_risks": ["HIPAA exposure if exploited"],
+            "generated": True,
+        }
+
+        body = comment.build_threat_model_comment(threat_payload)
+
+        self.assertIn("<!-- pr-threat-model -->", body)
+        self.assertIn("## Threat Model", body)
+        self.assertIn("**Blast radius:**", body)
+        self.assertIn("HTTP GET /export route parameter", body)
+        self.assertIn("<summary>Mitigations</summary>", body)
+        self.assertIn("<summary>Domain risks</summary>", body)
+        self.assertIn("> Advisory only — does not affect gate decision.", body)
+
+    def test_build_threat_model_comment_skips_generated_false_payload(self) -> None:
+        body = comment.build_threat_model_comment({"generated": False})
+
+        self.assertEqual(body, "")
+
     def test_render_comment_status_vocabulary_matches_conditions(self) -> None:
         failing = comment.render_comment(
             {
@@ -345,6 +380,55 @@ class CommentTests(unittest.TestCase):
                     exit_code = comment.main()
 
         self.assertEqual(exit_code, 1)
+
+    def test_dry_run_with_threat_model_writes_combined_output(self) -> None:
+        threat_payload = {
+            "pr_title": "Add patient export route",
+            "domain_summary": "healthcare scheduling with PHI access",
+            "entry_points_added": [
+                {
+                    "file": "caretrack/routes/export.py",
+                    "line": 18,
+                    "description": "HTTP GET /export route parameter",
+                }
+            ],
+            "assets_at_risk": ["patient records"],
+            "threat_actors": ["unauthenticated external users"],
+            "blast_radius": "An attacker could trigger bulk patient record export through the new route.",
+            "mitigations_present": ["admin role check"],
+            "mitigations_absent": ["download rate limiting"],
+            "domain_risks": ["HIPAA exposure if exploited"],
+            "generated": True,
+        }
+
+        with TemporaryDirectory() as temp_dir:
+            input_path = Path(temp_dir) / "narrative-findings.json"
+            threat_path = Path(temp_dir) / "threat-model.json"
+            output_path = Path(temp_dir) / "comment-preview.md"
+            input_path.write_text(json.dumps(BASE_PAYLOAD), encoding="utf-8")
+            threat_path.write_text(json.dumps(threat_payload), encoding="utf-8")
+
+            with patch(
+                "sys.argv",
+                [
+                    "comment.py",
+                    "--input",
+                    str(input_path),
+                    "--threat-model",
+                    str(threat_path),
+                    "--dry-run",
+                    "--output",
+                    str(output_path),
+                ],
+            ):
+                with patch("sys.stdout", new=StringIO()):
+                    exit_code = comment.main()
+
+            written = output_path.read_text(encoding="utf-8")
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("<!-- pr-security-gate -->", written)
+        self.assertIn("<!-- pr-threat-model -->", written)
 
     def test_dry_run_with_only_cross_file_findings_keeps_passing_exit_code(self) -> None:
         payload = {
