@@ -23,3 +23,4 @@ scan-results.json
 domain_context.json
 *findings*.json
 comment-*.md
+scratch/
