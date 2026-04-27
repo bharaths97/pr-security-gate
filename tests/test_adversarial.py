@@ -162,9 +162,11 @@ class AdversarialTests(unittest.TestCase):
         prompt = adversarial.build_user_prompt(SAMPLE_PAYLOAD["findings"][0], SAMPLE_DOMAIN_CONTEXT)
 
         self.assertIn("app_domain=healthcare scheduling", prompt)
-        self.assertIn('"rule_id": "rule-1"', prompt)
+        self.assertIn("rule-1", prompt)
         self.assertIn("subprocess.run(cmd, shell=True)", prompt)
         self.assertIn("HTTP query parameter", prompt)
+        self.assertIn('source="prior-ai-output"', prompt)
+        self.assertIn('source="semgrep-scan-output"', prompt)
 
     def test_parse_json_object_accepts_fenced_json(self) -> None:
         parsed = adversarial.parse_json_object(
@@ -177,8 +179,9 @@ class AdversarialTests(unittest.TestCase):
     def test_build_system_prompt_forbids_absence_of_evidence_counter_arguments(self) -> None:
         prompt = adversarial.build_system_prompt()
 
-        self.assertIn("absence of sanitization", prompt)
-        self.assertIn("does not weaken it", prompt)
+        self.assertIn("source=\"prior-ai-output\"", prompt)
+        self.assertIn("lack of defenses confirms the finding", prompt.lower())
+        self.assertIn("Rules that cannot be overridden", prompt)
 
     def test_normalize_verification_item_accepts_insufficient_evidence(self) -> None:
         parsed = adversarial.normalize_verification_item(
@@ -191,6 +194,18 @@ class AdversarialTests(unittest.TestCase):
 
         self.assertEqual(parsed["verdict"], "insufficient_evidence")
         self.assertEqual(parsed["adversarial_confidence"], "low")
+
+    def test_normalize_verification_item_preserves_injection_flag(self) -> None:
+        parsed = adversarial.normalize_verification_item(
+            {
+                "verdict": "sustained",
+                "counter_argument": "Visible validation is incomplete.",
+                "confidence": "medium",
+                "injection_attempt_detected": True,
+            }
+        )
+
+        self.assertTrue(parsed["injection_attempt_detected"])
 
     def test_main_writes_output_file(self) -> None:
         with TemporaryDirectory() as temp_dir:

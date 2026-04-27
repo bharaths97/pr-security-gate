@@ -140,6 +140,8 @@ def severity_label(finding: dict[str, Any]) -> str:
 
 
 def badge_for_finding(finding: dict[str, Any]) -> str:
+    if normalize_verdict(finding.get("verdict", "")) == "insufficient_evidence":
+        return "? Uncertain"
     badge = one_line_text(finding.get("badge", "")).upper()
     if badge:
         return badge

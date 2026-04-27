@@ -188,6 +188,29 @@ class CommentTests(unittest.TestCase):
         self.assertIn("shell is not invoked", details_section)
         self.assertNotIn("Challenged findings (1)", body)
 
+    def test_build_comment_body_keeps_insufficient_evidence_in_main_table_with_uncertain_badge(self) -> None:
+        payload = dict(BASE_PAYLOAD)
+        payload["summary"] = {
+            "total": 1,
+            "counts": {"critical": 0, "high": 1, "medium": 0, "low": 0},
+            "has_critical": False,
+        }
+        payload["findings"] = [
+            {
+                **BASE_PAYLOAD["findings"][0],
+                "severity": "high",
+                "verdict": "insufficient_evidence",
+                "counter_argument": "The diff does not include the helper implementation needed to judge exploitability.",
+            }
+        ]
+
+        body = comment.build_comment_body(payload)
+        main_section = body.split("<details>", maxsplit=1)[0]
+
+        self.assertIn("? Uncertain", main_section)
+        self.assertIn("caretrack/support_tools.py", main_section)
+        self.assertNotIn("Challenged findings (1)", body)
+
     def test_build_comment_body_keeps_sustained_critical_findings_out_of_main_table_notes(self) -> None:
         payload = dict(BASE_PAYLOAD)
         payload["findings"] = [

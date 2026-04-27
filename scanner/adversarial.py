@@ -92,33 +92,26 @@ def normalize_prompt_lines(value: Any) -> str:
     return text or "unknown"
 
 
-def build_finding_block(finding: dict[str, Any]) -> str:
-    prompt_payload = {
-        "rule_id": str(finding.get("rule_id", "unknown-rule")),
-        "severity": str(finding.get("severity", "unknown")),
-        "file": str(finding.get("file", "")),
-        "line": finding.get("line", ""),
-        "finding": one_line_text(finding.get("finding", "")),
-        "enriched_finding": one_line_text(finding.get("enriched_finding", "unknown")),
-        "fix_suggestion": one_line_text(finding.get("fix_suggestion", "")),
-        "enriched_fix": one_line_text(finding.get("enriched_fix", "unknown")),
-        "risk_context": one_line_text(finding.get("risk_context", "unknown")),
-        "cwe": one_line_text(finding.get("cwe", "N/A")),
-        "lines": normalize_prompt_lines(finding.get("lines")),
-        "origin": one_line_text(finding.get("origin", "unknown")),
-        "taint_path": one_line_text(finding.get("taint_path", "unknown")),
-        "source_description": one_line_text(finding.get("source_description", "unknown")),
-        "sink_description": one_line_text(finding.get("sink_description", "unknown")),
-    }
-    return json.dumps(prompt_payload, indent=2)
-
-
 def build_user_prompt(finding: dict[str, Any], domain_context: dict[str, Any] | None) -> str:
     return prompt_loader.render(
         "adversarial",
         "user_template",
         domain_summary=build_domain_summary(domain_context),
-        finding_block=build_finding_block(finding),
+        rule_id=str(finding.get("rule_id", "unknown-rule")),
+        severity=str(finding.get("severity", "unknown")),
+        file=str(finding.get("file", "")),
+        line=finding.get("line", ""),
+        finding=one_line_text(finding.get("finding", "")),
+        enriched_finding=one_line_text(finding.get("enriched_finding", "unknown")),
+        fix_suggestion=one_line_text(finding.get("fix_suggestion", "")),
+        enriched_fix=one_line_text(finding.get("enriched_fix", "unknown")),
+        risk_context=one_line_text(finding.get("risk_context", "unknown")),
+        cwe=one_line_text(finding.get("cwe", "N/A")),
+        lines=normalize_prompt_lines(finding.get("lines")),
+        origin=one_line_text(finding.get("origin", "unknown")),
+        taint_path=one_line_text(finding.get("taint_path", "unknown")),
+        source_description=one_line_text(finding.get("source_description", "unknown")),
+        sink_description=one_line_text(finding.get("sink_description", "unknown")),
     )
 
 
@@ -188,6 +181,8 @@ def normalize_verification_item(item: Any) -> dict[str, str]:
     confidence = normalize_confidence(item.get("confidence"))
     if confidence is not None:
         normalized["adversarial_confidence"] = confidence
+    if isinstance(item.get("injection_attempt_detected"), bool):
+        normalized["injection_attempt_detected"] = item["injection_attempt_detected"]
     return normalized
 
 
