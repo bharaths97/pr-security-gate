@@ -21,6 +21,10 @@ ALLOWED_VARIABLES = {
         "low",
         "scanned_files",
         "changed_files",
+        "domain_summary",
+        "highest_severity",
+        "highest_severity_count",
+        "priority_file",
         "findings_block",
     },
     "domain_context": {"files_block"},
@@ -71,6 +75,14 @@ def render(name: str, template_name: str, **kwargs: Any) -> str:
             raise ValueError(f"Unsupported format modifier in {name}.{template_name}")
         parts.append(sanitize_value(kwargs[field_name]))
     return "".join(parts)
+
+
+def render_prompt(name: str, variables: dict[str, Any] | None = None) -> dict[str, str]:
+    values = dict(variables or {})
+    return {
+        "system": render(name, "system", **values),
+        "user": render(name, "user_template", **values),
+    }
 
 
 def validate_prompt(name: str, prompt: dict[str, Any]) -> None:

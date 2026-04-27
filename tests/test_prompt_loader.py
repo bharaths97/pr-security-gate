@@ -113,6 +113,19 @@ class PromptLoaderTests(unittest.TestCase):
         self.assertIn('{"rule_id": "rule-1"}', rendered)
         self.assertIn("risk_tier=high", rendered)
 
+    def test_render_prompt_returns_system_and_user_sections(self) -> None:
+        rendered = prompt_loader.render_prompt(
+            "adversarial",
+            {
+                "domain_summary": "risk_tier=high",
+                "finding_block": '{"rule_id": "rule-1"}',
+            },
+        )
+
+        self.assertIn("system", rendered)
+        self.assertIn("user", rendered)
+        self.assertIn("insufficient_evidence", rendered["user"])
+
     def test_render_call_graph_prompt_accepts_phase6_variables(self) -> None:
         rendered = prompt_loader.render(
             "call_graph",
