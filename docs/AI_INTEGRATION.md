@@ -128,13 +128,12 @@ When the threat model succeeds, `threat-model.json` contains:
 
 - `blast_radius` — one sentence describing the worst realistic outcome
 - `entry_points_added` — new touchpoints this PR exposed, with file and line
-- `assets_at_risk` — data or systems an attacker could reach
-- `threat_actors` — up to three actors who would realistically exploit this
+- `stride_findings` — up to three grounded STRIDE categories with evidence, why the category applies, reviewer action, and confidence
 - `mitigations_present` — existing defenses observed in the changed code
 - `mitigations_absent` — expected defenses that are missing
 - `domain_risks` — application-specific risks derived from `domain_context.json` (empty when domain is unknown)
 
-The output is posted as a separate PR comment under `<!-- pr-threat-model -->`, distinct from the `<!-- pr-security-gate -->` security gate comment. This keeps the security gate results clean while giving the reviewer a separate advisory surface.
+The output is posted as a separate PR comment under `<!-- pr-threat-model -->`, distinct from the `<!-- pr-security-gate -->` security gate comment. This keeps the security gate results clean while giving the reviewer a separate advisory surface. The comment keeps a plain-English blast radius line at the top, then renders the 1 to 3 most relevant STRIDE categories in a compact table rather than forcing a full six-row STRIDE model.
 
 The step is opt-in via `run-threat-model: true` in the reusable workflow. It defaults to `false`. If no provider key is configured, a required input artifact is missing, or the AI call fails, the step writes `{"generated": false}` and exits 0. The threat model advisory never causes the workflow to fail.
 
@@ -171,7 +170,7 @@ Later phases build deeper contextual reasoning and better prioritization, but th
 | Terrain synthesis | source-to-sink reasoning in changed files | changed-file scan data |
 | Adversarial verification | challenge and validate finding quality | best with terrain output |
 | Cross-file reasoning | broader multi-file context | optional later enhancement |
-| PR threat model | attack surface delta, blast radius, threat actors | terrain output + domain context + PR metadata |
+| PR threat model | attack surface delta, blast radius, grounded STRIDE categories | terrain output + domain context + PR metadata |
 
 ## Design Principles
 

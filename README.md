@@ -36,7 +36,7 @@ Private working notes are kept in a local gitignored `.internal/` directory and 
 - Completed: optional AI terrain synthesis now generates `terrain-findings.json`, classifies findings as `introduced` or `pre-existing`, adds taint-path context to the comment, and has passed local, Docker, and CareTrack validation
 - Completed: optional AI adversarial verification now generates `verified-findings.json`, adds sustained or challenged reviewer context to the comment, and has passed local, Docker, provider-backed smoke, and CareTrack validation
 - Completed: optional AI cross-file taint tracing now generates `call-graph-findings.json`, appends low-confidence cross-file observations, renders an `Extended Analysis` section, and has passed local, Docker, provider-backed smoke, and CareTrack validation
-- Completed: optional PR-level threat model advisory now generates `threat-model.json`, posts a separate advisory comment with blast radius, entry points, assets at risk, threat actors, mitigations, and domain-specific risks, and degrades gracefully when no provider is configured
+- Completed: optional PR-level threat model advisory now generates `threat-model.json`, posts a separate advisory comment with blast radius, entry points, top STRIDE categories, mitigations, and domain-specific risks, and degrades gracefully when no provider is configured
 - Planned: pin Actions by SHA, add real PR evidence, and keep expanding the rule library beyond the current first wave
 
 ## Project Layout
@@ -75,7 +75,7 @@ requirements.txt
 9. `scanner/adversarial.py` optionally reviews each HIGH or CRITICAL finding, writes `verified-findings.json` with verdict and rationale data, and preserves graceful per-finding fallback when a provider response fails.
 10. `scanner/call_graph.py` optionally traces changed functions into same-repo unchanged callees, appends low-confidence `origin: "cross-file"` observations to `call-graph-findings.json`, and preserves graceful per-chain fallback when provider resolution fails.
 11. `scanner/narrative.py` optionally adds a short AI risk narrative and writes `narrative-findings.json`. When verified or call-graph findings exist, the narrative prompt can reflect the richer context automatically.
-12. `scanner/threat_model.py` optionally generates a PR-level threat model advisory from existing pipeline artifacts and PR metadata (title and description), and writes `threat-model.json`. It reads `domain_context.json`, `terrain-findings.json`, and `triage-findings.json`, makes one AI call, and writes a structured advisory covering blast radius, entry points added, assets at risk, threat actors, present and absent mitigations, and domain-specific risks. If no provider key is configured or the AI call fails, it writes `{"generated": false}` and exits 0.
+12. `scanner/threat_model.py` optionally generates a PR-level threat model advisory from existing pipeline artifacts and PR metadata (title and description), and writes `threat-model.json`. It reads `domain_context.json`, `terrain-findings.json`, and `triage-findings.json`, makes one AI call, and writes a structured advisory covering blast radius, entry points added, the top 1-3 STRIDE categories with evidence and reviewer actions, present and absent mitigations, and domain-specific risks. If no provider key is configured or the AI call fails, it writes `{"generated": false}` and exits 0.
 13. `scanner/comment.py` renders and posts the security gate comment, then optionally posts the threat model advisory as a separate PR comment (`<!-- pr-threat-model -->`). The two comments use different markers so either can be updated independently. The threat model comment is suppressed when `generated` is false.
 14. If any finding is `critical`, the comment step exits non-zero so the GitHub Action fails. With branch protection enabled for this check, the PR is blocked from merging. The threat model advisory does not affect this behavior.
 
@@ -246,8 +246,11 @@ With threat model advisory (`run-threat-model: true` and a provider key configur
 **Blast radius:** An authenticated user could extract patient records or trigger arbitrary command execution via the new support tooling endpoint added in this PR.
 
 **Entry points added:** 2 — `caretrack/support_tools.py:10` HTTP request parameter reaching shell execution; `caretrack/admin.py:266` preview expression with cross-file sink
-**Assets at risk:** patient records, system shell, admin report output
-**Relevant threat actors:** authenticated low-privilege user, compromised session
+
+| STRIDE | Evidence | Why It Applies | Reviewer Action |
+| --- | --- | --- | --- |
+| Elevation of Privilege | `caretrack/support_tools.py:21` request input reaches shell execution | User-controlled input can execute in a privileged server-side context. | Replace shell execution and constrain the command path. <sub><em>Confidence: high</em></sub> |
+| Information Disclosure | `caretrack/admin.py:266` preview flow reaches report export path | Abuse of the new execution path could expose report or patient data. | Verify row-level access control and report authorization before merge. <sub><em>Confidence: medium</em></sub> |
 
 <details>
 <summary>Mitigations</summary>
@@ -327,7 +330,7 @@ docker compose run --rm security-gate \
     --output comment-preview.md
 ```
 
-The `--threat-model` flag is optional. Without it, `comment.py` renders only the security gate comment. When provided and `generated` is `true`, a second advisory block is appended after the main comment body.
+The `--threat-model` flag is optional. Without it, `comment.py` renders only the security gate comment. When provided and `generated` is `true`, a second advisory block is appended after the main comment body. The advisory comment now renders a compact STRIDE table rather than a generic assets-and-actors summary.
 
 For AI smoke testing, copy `.env.ai.example` to `.env.ai`, add a provider key, and re-run the domain context, enrichment, adversarial, or narrative step. Docker picks up `.env.ai` automatically via `compose.yaml`. If `.env.ai` is absent or contains no key, the AI steps still succeed with fallback output.
 
