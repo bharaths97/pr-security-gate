@@ -163,21 +163,29 @@ def normalize_confidence(value: Any) -> str | None:
     return None
 
 
-def normalize_verification_item(item: Any) -> dict[str, str]:
+def normalize_verification_item(item: Any) -> dict[str, Any]:
     if not isinstance(item, dict):
         raise ValueError("Adversarial response must be a JSON object.")
 
     verdict = normalize_verdict(item.get("verdict"))
-    counter_argument = normalize_optional_text(item.get("counter_argument"))
     if verdict is None:
         raise ValueError("Adversarial response is missing a valid verdict.")
-    if counter_argument is None:
-        raise ValueError("Adversarial response is missing a valid counter_argument.")
+
+    counter_argument = normalize_optional_text(item.get("counter_argument"))
+    rationale = normalize_optional_text(item.get("rationale")) or counter_argument
+    if rationale is None:
+        raise ValueError("Adversarial response is missing a valid rationale.")
+    if verdict == "downgraded" and counter_argument is None:
+        raise ValueError(
+            "Adversarial response is missing a valid counter_argument for downgraded verdict."
+        )
 
     normalized = {
         "verdict": verdict,
-        "counter_argument": counter_argument,
+        "rationale": rationale,
     }
+    if verdict == "downgraded" and counter_argument is not None:
+        normalized["counter_argument"] = counter_argument
     confidence = normalize_confidence(item.get("confidence"))
     if confidence is not None:
         normalized["adversarial_confidence"] = confidence
@@ -195,7 +203,7 @@ def generate_finding_verdict(
     finding: dict[str, Any],
     domain_context: dict[str, Any] | None,
     provider: dict[str, str],
-) -> dict[str, str]:
+) -> dict[str, Any]:
     response = ai_provider.generate_text(
         build_system_prompt(),
         build_user_prompt(finding, domain_context),

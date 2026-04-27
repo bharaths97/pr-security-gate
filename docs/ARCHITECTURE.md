@@ -57,7 +57,7 @@ AI prompt content lives in `prompts/*.toml` instead of being hardcoded in Python
 
 ### Adversarial Verification Stage
 
-`scanner/adversarial.py` reads `enriched-findings.json` or `terrain-findings.json`, optionally reads `domain_context.json`, and writes `verified-findings.json`. It makes one provider call per HIGH or CRITICAL finding, asks for the strongest evidence-based counter-argument, and applies only normalized `verdict`, `counter_argument`, and `adversarial_confidence` fields. LOW and MEDIUM findings pass through unchanged. If no matching provider key is configured, the prompt fails to load, a single provider call fails, or a response is malformed, the workflow leaves the affected findings unchanged and continues.
+`scanner/adversarial.py` reads `enriched-findings.json` or `terrain-findings.json`, optionally reads `domain_context.json`, and writes `verified-findings.json`. It makes one provider call per HIGH or CRITICAL finding, asks for a verdict plus a required rationale, and applies only normalized `verdict`, `rationale`, optional `counter_argument` for downgraded findings, and `adversarial_confidence` fields. LOW and MEDIUM findings pass through unchanged. If no matching provider key is configured, the prompt fails to load, a single provider call fails, or a response is malformed, the workflow leaves the affected findings unchanged and continues.
 
 ### Cross-File Taint Tracing Stage
 

@@ -129,7 +129,7 @@ class CommentTests(unittest.TestCase):
                 **BASE_PAYLOAD["findings"][0],
                 "severity": "high",
                 "verdict": "sustained",
-                "counter_argument": "The input is partially validated, but user-controlled data still reaches shell execution.",
+                "rationale": "The input is partially validated, but user-controlled data still reaches shell execution.",
             }
         ]
 
@@ -156,6 +156,7 @@ class CommentTests(unittest.TestCase):
                 "cwe": "CWE-89",
                 "fix_suggestion": "Use parameterized queries.",
                 "verdict": "downgraded",
+                "rationale": "The visible path appears constrained before the sink.",
                 "counter_argument": "The query string is assembled from an internal enum and not user input.",
             },
         ]
@@ -174,6 +175,7 @@ class CommentTests(unittest.TestCase):
             {
                 **BASE_PAYLOAD["findings"][0],
                 "verdict": "downgraded",
+                "rationale": "The command list appears fixed in the reachable path.",
                 "counter_argument": "The command list is fixed and the shell is not invoked in the reachable code path.",
             }
         ]
@@ -200,7 +202,7 @@ class CommentTests(unittest.TestCase):
                 **BASE_PAYLOAD["findings"][0],
                 "severity": "high",
                 "verdict": "insufficient_evidence",
-                "counter_argument": "The diff does not include the helper implementation needed to judge exploitability.",
+                "rationale": "The diff does not include the helper implementation needed to judge exploitability.",
             }
         ]
 
@@ -208,6 +210,8 @@ class CommentTests(unittest.TestCase):
         main_section = body.split("<details>", maxsplit=1)[0]
 
         self.assertIn("? Uncertain", main_section)
+        self.assertIn("AI auditor: uncertain", main_section)
+        self.assertIn("helper implementation needed", main_section)
         self.assertIn("caretrack/support_tools.py", main_section)
         self.assertNotIn("Challenged findings (1)", body)
 
@@ -217,7 +221,7 @@ class CommentTests(unittest.TestCase):
             {
                 **BASE_PAYLOAD["findings"][0],
                 "verdict": "sustained",
-                "counter_argument": "User input still reaches the sink after partial validation.",
+                "rationale": "User input still reaches the sink after partial validation.",
             }
         ]
 

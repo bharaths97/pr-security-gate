@@ -92,11 +92,12 @@ If no provider key is present, `AI_PROVIDER=none` is used, the prompt fails to l
 
 When verification succeeds, findings may gain:
 
-- `verdict` with `sustained` or `downgraded`
-- `counter_argument`
+- `verdict` with `sustained`, `downgraded`, or `insufficient_evidence`
+- `rationale`
+- `counter_argument` for `downgraded` findings only
 - `adversarial_confidence`
 
-The PR comment keeps sustained findings in the main table with an inline adversarial note, moves downgraded non-critical findings into a collapsed `Challenged findings` section, and keeps downgraded CRITICAL findings in the main table so the deterministic critical gate is unchanged.
+The PR comment keeps sustained findings in the main table with an inline adversarial note, renders `insufficient_evidence` with a `? Uncertain` badge, moves downgraded non-critical findings into a collapsed `Challenged findings` section, and keeps CRITICAL findings in the main table so the deterministic critical gate is unchanged.
 
 If no provider key is present, the prompt fails to load, the provider fails, or the model returns malformed JSON for one finding, the workflow degrades gracefully. No-provider mode writes the original enriched findings through unchanged. Per-finding failures leave only that finding without adversarial fields and continue.
 

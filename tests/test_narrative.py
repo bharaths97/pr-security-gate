@@ -211,6 +211,7 @@ class NarrativeTests(unittest.TestCase):
             {
                 **SAMPLE_PAYLOAD["findings"][0],
                 "verdict": "downgraded",
+                "rationale": "The visible path may be constrained before the sink.",
                 "counter_argument": "The subprocess call uses a fixed argument list and does not invoke a shell.",
                 "adversarial_confidence": "medium",
             }
@@ -221,6 +222,22 @@ class NarrativeTests(unittest.TestCase):
         self.assertIn("Adversarial review: verdict=downgraded", prompt)
         self.assertIn("confidence=medium", prompt)
         self.assertIn("fixed argument list", prompt)
+
+    def test_build_user_prompt_includes_sustained_rationale_when_present(self) -> None:
+        payload = dict(SAMPLE_PAYLOAD)
+        payload["findings"] = [
+            {
+                **SAMPLE_PAYLOAD["findings"][0],
+                "verdict": "sustained",
+                "rationale": "The visible code still allows user input to reach shell execution.",
+                "adversarial_confidence": "high",
+            }
+        ]
+
+        prompt = narrative.build_user_prompt(payload)
+
+        self.assertIn("Adversarial review: verdict=sustained", prompt)
+        self.assertIn("rationale=The visible code still allows user input to reach shell execution.", prompt)
 
     def test_build_system_prompt_contains_injection_defense(self) -> None:
         prompt = narrative.build_system_prompt()
