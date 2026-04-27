@@ -18,10 +18,29 @@ on:
         required: false
         type: string
         default: local
+      ai-provider:
+        description: "AI provider for optional enrichment: auto, anthropic, openai, or none."
+        required: false
+        type: string
+        default: auto
+      anthropic-model:
+        description: Anthropic model used when Anthropic is selected.
+        required: false
+        type: string
+        default: claude-sonnet-4-6
+      openai-model:
+        description: OpenAI model used when OpenAI is selected.
+        required: false
+        type: string
+        default: gpt-4o-mini
     secrets:
       github-token:
         required: true
       semgrep-app-token:
+        required: false
+      anthropic-api-key:
+        required: false
+      openai-api-key:
         required: false
 
 permissions:
@@ -53,11 +72,42 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: ".pr-security-gate/requirements.txt"
 
       - name: Install PR Security Gate dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r .pr-security-gate/requirements.txt
+
+      - name: Restore domain context cache
+        id: domain-context-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: domain_context.json
+          key: domain-context-${{ github.event.pull_request.base.ref }}-${{ hashFiles('README*', 'Dockerfile', 'compose.yaml', 'compose.yml', 'docker-compose.yaml', 'docker-compose.yml', 'package.json', 'requirements*.txt', 'go.mod', 'pom.xml', 'Cargo.toml', 'pyproject.toml', '.env.example', '*.yaml', '*.yml', '*.toml', '*.json') }}
+
+      - name: Generate domain context
+        id: domain-context
+        if: steps.domain-context-cache.outputs.cache-hit != 'true'
+        env:
+          AI_PROVIDER: ${{ inputs.ai-provider }}
+          ANTHROPIC_API_KEY: ${{ secrets.anthropic-api-key }}
+          ANTHROPIC_MODEL: ${{ inputs.anthropic-model }}
+          OPENAI_API_KEY: ${{ secrets.openai-api-key }}
+          OPENAI_MODEL: ${{ inputs.openai-model }}
+        run: |
+          python .pr-security-gate/scanner/domain_context.py \
+            --repo-root . \
+            --output domain_context.json
+          python -c "import json; print('cacheable=' + str(json.load(open('domain_context.json')).get('generated') is True).lower())" >> "$GITHUB_OUTPUT"
+
+      - name: Save domain context cache
+        if: steps.domain-context-cache.outputs.cache-hit != 'true' && steps.domain-context.outputs.cacheable == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: domain_context.json
+          key: ${{ steps.domain-context-cache.outputs.cache-primary-key }}
 
       - name: Run scoped Semgrep scan
         env:
@@ -76,6 +126,77 @@ jobs:
             --input scan-results.json \
             --output triaged-findings.json
 
+      - name: Synthesize terrain
+        env:
+          AI_PROVIDER: ${{ inputs.ai-provider }}
+          ANTHROPIC_API_KEY: ${{ secrets.anthropic-api-key }}
+          ANTHROPIC_MODEL: ${{ inputs.anthropic-model }}
+          OPENAI_API_KEY: ${{ secrets.openai-api-key }}
+          OPENAI_MODEL: ${{ inputs.openai-model }}
+          GITHUB_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python .pr-security-gate/scanner/terrain.py \
+            --input triaged-findings.json \
+            --context domain_context.json \
+            --output terrain-findings.json
+
+      - name: Enrich findings
+        env:
+          AI_PROVIDER: ${{ inputs.ai-provider }}
+          ANTHROPIC_API_KEY: ${{ secrets.anthropic-api-key }}
+          ANTHROPIC_MODEL: ${{ inputs.anthropic-model }}
+          OPENAI_API_KEY: ${{ secrets.openai-api-key }}
+          OPENAI_MODEL: ${{ inputs.openai-model }}
+        run: |
+          python .pr-security-gate/scanner/ai_enrich.py \
+            --input terrain-findings.json \
+            --context domain_context.json \
+            --output enriched-findings.json
+
+      - name: Adversarial verification
+        env:
+          AI_PROVIDER: ${{ inputs.ai-provider }}
+          ANTHROPIC_API_KEY: ${{ secrets.anthropic-api-key }}
+          ANTHROPIC_MODEL: ${{ inputs.anthropic-model }}
+          OPENAI_API_KEY: ${{ secrets.openai-api-key }}
+          OPENAI_MODEL: ${{ inputs.openai-model }}
+        run: |
+          python .pr-security-gate/scanner/adversarial.py \
+            --input enriched-findings.json \
+            --context domain_context.json \
+            --output verified-findings.json
+
+      - name: Cross-file call graph
+        env:
+          AI_PROVIDER: ${{ inputs.ai-provider }}
+          ANTHROPIC_API_KEY: ${{ secrets.anthropic-api-key }}
+          ANTHROPIC_MODEL: ${{ inputs.anthropic-model }}
+          OPENAI_API_KEY: ${{ secrets.openai-api-key }}
+          OPENAI_MODEL: ${{ inputs.openai-model }}
+          GITHUB_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python .pr-security-gate/scanner/call_graph.py \
+            --input verified-findings.json \
+            --context domain_context.json \
+            --output call-graph-findings.json
+
+      - name: Generate PR risk narrative
+        env:
+          AI_PROVIDER: ${{ inputs.ai-provider }}
+          ANTHROPIC_API_KEY: ${{ secrets.anthropic-api-key }}
+          ANTHROPIC_MODEL: ${{ inputs.anthropic-model }}
+          OPENAI_API_KEY: ${{ secrets.openai-api-key }}
+          OPENAI_MODEL: ${{ inputs.openai-model }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          python .pr-security-gate/scanner/narrative.py \
+            --input call-graph-findings.json \
+            --output narrative-findings.json
+
       - name: Comment on pull request
         env:
           GITHUB_TOKEN: ${{ secrets.github-token }}
@@ -83,4 +204,4 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           python .pr-security-gate/scanner/comment.py \
-            --input triaged-findings.json
+            --input narrative-findings.json

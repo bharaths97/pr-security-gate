@@ -51,6 +51,7 @@ That wrapper should:
 - trigger on `pull_request`
 - call this repository's reusable workflow
 - choose `scan-mode: local` or `scan-mode: cloud`
+- optionally choose AI settings with `ai-provider`, `anthropic-model`, and `openai-model`
 - pass the required secrets
 
 ## Ref Alignment Rule
@@ -105,8 +106,11 @@ jobs:
     with:
       security-gate-ref: main
       scan-mode: local
+      ai-provider: auto
     secrets:
       github-token: ${{ secrets.GITHUB_TOKEN }}
+      anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+      openai-api-key: ${{ secrets.OPENAI_API_KEY }}
 ```
 
 ## Cloud Mode Template
@@ -134,9 +138,12 @@ jobs:
     with:
       security-gate-ref: main
       scan-mode: cloud
+      ai-provider: auto
     secrets:
       github-token: ${{ secrets.GITHUB_TOKEN }}
       semgrep-app-token: ${{ secrets.SEMGREP_APP_TOKEN }}
+      anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+      openai-api-key: ${{ secrets.OPENAI_API_KEY }}
 ```
 
 ## Secret Ownership
@@ -150,7 +157,22 @@ jobs:
 - is stored in the client repository or organization secrets
 - is only required for `scan-mode: cloud`
 
+`ANTHROPIC_API_KEY` and `OPENAI_API_KEY`:
+
+- are stored in the client repository or organization secrets
+- are optional and only needed when AI enrichment should run
+- if neither is passed, the workflow still posts the normal deterministic PR comment
+
 This repository should not store client-specific Semgrep tokens.
+
+## AI Options
+
+AI enrichment is optional. By default, `ai-provider: auto` uses Anthropic when `anthropic-api-key` is passed, otherwise OpenAI when `openai-api-key` is passed. Set `ai-provider: none` to disable AI enrichment explicitly.
+
+Model inputs are optional:
+
+- `anthropic-model`: defaults to `claude-sonnet-4-6`
+- `openai-model`: defaults to `gpt-4o-mini`
 
 ## Recommended Rollout
 
@@ -158,7 +180,8 @@ This repository should not store client-specific Semgrep tokens.
 2. Verify scan, triage, comment, and merge-gate behavior.
 3. Add `SEMGREP_APP_TOKEN` in the client repo or org.
 4. Switch that client repo to `scan-mode: cloud`.
-5. Validate the hosted `semgrep ci` payload and PR comment behavior.
+5. Add either `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` if AI enrichment should run.
+6. Validate the hosted `semgrep ci` payload and PR comment behavior.
 
 ## CareTrack Example
 

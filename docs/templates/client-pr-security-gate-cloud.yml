@@ -14,6 +14,9 @@ jobs:
     with:
       security-gate-ref: main
       scan-mode: cloud
+      ai-provider: auto
     secrets:
       github-token: ${{ secrets.GITHUB_TOKEN }}
       semgrep-app-token: ${{ secrets.SEMGREP_APP_TOKEN }}
+      anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+      openai-api-key: ${{ secrets.OPENAI_API_KEY }}

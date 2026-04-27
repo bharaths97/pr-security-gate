@@ -17,7 +17,7 @@ This project is designed to show both application security scanning and CI/CD se
 
 ### Scan Only Changed Files
 
-`scanner/run_scan.py` scopes the pull request context by using `git diff` between the PR base and head SHAs. In local mode, it scans only matching changed source files with the repository's custom Semgrep rules. In cloud mode, it runs `semgrep ci` with the repository's Semgrep AppSec Platform configuration while preserving the same downstream triage contract.
+`scanner/run_scan.py` scopes the pull request context by using `git diff` between the PR base and head SHAs. It uses a two-commit diff (`base..head`) rather than a three-dot merge-base diff (`base...head`) — the two-dot form does a direct comparison between any two git objects, which works correctly with real PR SHAs in CI and also supports the empty tree SHA used for local smoke testing. In local mode, it scans only matching changed source files with the repository's custom Semgrep rules. In cloud mode, it runs `semgrep ci` with the repository's Semgrep AppSec Platform configuration while preserving the same downstream triage contract.
 
 This keeps results focused on the pull request instead of turning the workflow into a noisy full-repository dump.
 
@@ -30,6 +30,12 @@ The reusable workflow uses an explicit `scan-mode` input instead of auto-detecti
 - cloud mode does not silently fall back to local mode
 
 This keeps the workflow behavior predictable during rollout, demos, and debugging.
+
+### Local Vs Cloud Tradeoff
+
+Local mode is self-contained and easy to demo because it uses the custom rules in this repository and scans only changed source files. Its coverage is limited by the local rule library.
+
+Cloud mode uses Semgrep AppSec Platform through `semgrep ci`, so it can apply broader managed rules and repository policy. It requires `SEMGREP_APP_TOKEN` and runs with Semgrep Cloud's repository-aware behavior, which is why the PR comment describes cloud scope separately from local changed-file scope.
 
 ### Fail Only on Critical Findings
 
@@ -44,6 +50,10 @@ The workflow requests only:
 
 That permission model is enough to read the repository contents and write the PR comment without over-granting workflow access.
 
+### Domain Context Trust Boundary
+
+`scanner/domain_context.py` reads only a narrow allowlist of safe, top-level project metadata files — README, Dockerfile, dependency manifests, and example or sample configs. It explicitly denies `.env`, local environment variants such as `.env.production`, all source code, and nested directories such as `.git`, `.pr-*`, virtual environments, and dependency folders. It also denies generated workflow artifacts by pattern, including files such as `*-findings.json`, `*-results.json`, `*_context.json`, and `*-preview.md`, to prevent feedback loops. A `MAX_CONTEXT_BYTES` cap limits how much content is sent to the provider. If no safe files exist, no provider key is present, or the provider call fails, it writes a structured fallback context and the workflow continues — the scan, triage, comment, and critical gate steps are unaffected.
+
 ### Developer-Friendly Output
 
 The project does not dump raw Semgrep JSON onto the pull request. Instead, it:
@@ -53,6 +63,16 @@ The project does not dump raw Semgrep JSON onto the pull request. Instead, it:
 - adds CWE references
 - adds fix suggestions
 - renders a readable markdown table
+
+### AI Context Boundaries
+
+The domain context step reads only safe, top-level project metadata such as README, Docker, dependency, and example config files. It does not read `.env`, source files, dependency folders, or the checked-out scanner repository. If AI is unavailable or fails, it writes an unknown fallback context and does not affect the deterministic security gate.
+
+AI prompt text is centralized under `prompts/*.toml` and rendered through `scanner/prompt_loader.py`. The loader enforces a prompt-specific variable allowlist, strips control characters from interpolated values, replaces `None` with `unknown`, and caps injected value size before provider submission. Narrative and future enrichment prompts also include an explicit instruction that user-controlled findings text must be treated as data, not as instructions.
+
+The terrain step sends the full content of changed files that already contain findings, along with diff metadata needed to distinguish new versus pre-existing sources. The enrichment step sends flagged code snippets from Semgrep's `extra.lines` field plus any terrain context so the generated finding and remediation text can reference the actual code under review. The adversarial step sends one HIGH or CRITICAL finding at a time, along with any available terrain and enrichment context, so the provider can return a verdict with a required rationale and, when appropriate, a specific downgrade counter-argument. Those are deliberate trust-boundary choices: the model sees changed-file content and snippets, but its output only affects reviewer-facing text in the PR comment and narrative.
+
+This does not eliminate prompt injection risk entirely because finding data, changed file content, and repository metadata can still contain adversarial strings, but it keeps that input visible, bounded, and separate from merge-blocking logic. AI output still only affects reviewer-facing text, terrain labeling, adversarial commentary structure, and narrative phrasing, while the critical gate remains driven by deterministic triage data.
 
 ### Local Reproducibility
 
@@ -88,7 +108,5 @@ This project uses the `pull_request` event, not `pull_request_target`, because t
 ## Future Hardening
 
 - Pin GitHub Actions by commit SHA
-- Add explicit automated rule tests
 - Expand beyond the current 21 local custom rules and include more obscure vulnerability patterns
-- Document Semgrep Cloud tradeoffs against local custom-rule mode using the validated consumer-repo run
 - Add screenshots from a real PR run

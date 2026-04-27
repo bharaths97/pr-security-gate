@@ -29,6 +29,12 @@ Private working notes are kept in a local gitignored `.internal/` directory and 
 - Completed: local validation of 21 custom Semgrep rules across Python, JavaScript/TypeScript, Go, and Java
 - Completed: local markdown preview for the PR comment body
 - Completed: live end-to-end consumer-repo validation in both local and Semgrep Cloud modes
+- Completed: optional AI risk narrative via Anthropic or OpenAI, validated locally and in GitHub Actions
+- Completed: optional AI domain context artifact implemented and wired into the reusable workflow for later enrichment phases
+- Completed: optional AI finding enrichment step now generates `enriched-findings.json`, feeds enriched text into the PR narrative, prefers enriched text in the comment table, and has been validated in GitHub Actions
+- Completed: optional AI terrain synthesis now generates `terrain-findings.json`, classifies findings as `introduced` or `pre-existing`, adds taint-path context to the comment, and has passed local, Docker, and CareTrack validation
+- Completed: optional AI adversarial verification now generates `verified-findings.json`, adds sustained or challenged reviewer context to the comment, and has passed local, Docker, provider-backed smoke, and CareTrack validation
+- Completed: optional AI cross-file taint tracing now generates `call-graph-findings.json`, appends low-confidence cross-file observations, renders an `Extended Analysis` section, and has passed local, Docker, provider-backed smoke, and CareTrack validation
 - Planned: pin Actions by SHA, add real PR evidence, and keep expanding the rule library beyond the current first wave
 
 ## Project Layout
@@ -38,8 +44,15 @@ Private working notes are kept in a local gitignored `.internal/` directory and 
 .github/workflows/security-scan.yml
 docs/
 rules/
+scanner/ai_provider.py
+scanner/ai_enrich.py
+scanner/adversarial.py
+scanner/call_graph.py
+scanner/terrain.py
 scanner/run_scan.py
 scanner/triage.py
+scanner/domain_context.py
+scanner/narrative.py
 scanner/comment.py
 tests/vulnerable_samples/
 requirements.txt
@@ -51,9 +64,15 @@ requirements.txt
 2. The reusable workflow checks out the caller repository to scan the PR code, then checks out this repo into a hidden subdirectory so it can reuse the shared scanner code and rules.
 3. `scanner/run_scan.py` uses `git diff` between the PR base and head SHAs to identify changed files and supports two backends: local custom rules and Semgrep Cloud.
 4. In `local` mode, Semgrep runs with the language-specific rule packs in [`rules/`](rules). In `cloud` mode, `semgrep ci` uses the repository's Semgrep AppSec Platform configuration.
-5. `scanner/triage.py` deduplicates findings by `rule_id + file + line`, sorts them from `critical` to `low`, and emits grouped severity summaries.
-6. `scanner/comment.py` can render the markdown comment locally in dry-run mode, then uses `PyGithub` and `GITHUB_TOKEN` to upsert that same body to the pull request.
-7. If any finding is `critical`, the comment step exits non-zero so the GitHub Action fails. With branch protection enabled for this check, the PR is blocked from merging.
+5. `scanner/domain_context.py` optionally summarizes safe, top-level project metadata into `domain_context.json` for later AI phases.
+6. `scanner/triage.py` deduplicates findings by `rule_id + file + line`, preserves Semgrep `extra.lines` snippets for later enrichment, sorts results from `critical` to `low`, and emits the structured finding summary.
+7. `scanner/terrain.py` optionally analyzes each changed file with findings, identifies likely sources and sinks, and writes `terrain-findings.json` with `origin` and `taint_path` context when available.
+8. `scanner/ai_enrich.py` optionally generates per-finding `enriched_finding`, `enriched_fix`, and `risk_context` fields from terrain-aware findings plus optional domain context.
+9. `scanner/adversarial.py` optionally reviews each HIGH or CRITICAL finding, writes `verified-findings.json` with verdict and rationale data, and preserves graceful per-finding fallback when a provider response fails.
+10. `scanner/call_graph.py` optionally traces changed functions into same-repo unchanged callees, appends low-confidence `origin: "cross-file"` observations to `call-graph-findings.json`, and preserves graceful per-chain fallback when provider resolution fails.
+11. `scanner/narrative.py` optionally adds a short AI risk narrative and writes `narrative-findings.json`. When verified or call-graph findings exist, the narrative prompt can reflect the richer context automatically.
+12. `scanner/comment.py` can render the markdown comment locally in dry-run mode, prefers enriched text in the findings table when available, separates `challenged`, `pre-existing`, and cross-file `Extended Analysis` content into collapsed sections, and then uses `PyGithub` and `GITHUB_TOKEN` to upsert that same body to the pull request.
+13. If any finding is `critical`, the comment step exits non-zero so the GitHub Action fails. With branch protection enabled for this check, the PR is blocked from merging.
 
 ## Modular Usage
 
@@ -94,9 +113,9 @@ To opt into Semgrep Cloud mode, store `SEMGREP_APP_TOKEN` in the consumer reposi
 ```yaml
 jobs:
   pr-security-gate:
-    uses: bharaths97/pr-security-gate/.github/workflows/pr-security-gate-reusable.yml@semgrep-cloud-scan
+    uses: bharaths97/pr-security-gate/.github/workflows/pr-security-gate-reusable.yml@main
     with:
-      security-gate-ref: semgrep-cloud-scan
+      security-gate-ref: main
       scan-mode: cloud
     secrets:
       github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -138,6 +157,8 @@ Coverage themes in the current rule packs:
 
 ## Sample PR Comment Excerpt
 
+Without AI narrative:
+
 ```markdown
 ## PR Security Gate Results
 
@@ -156,13 +177,108 @@ Findings: critical `4`, high `14`, medium `3`, low `0`.
 > Critical findings detected. This check fails so branch protection can block the merge until remediated.
 ```
 
+With AI narrative (`ai-provider: auto` and a provider key configured):
+
+```markdown
+## PR Security Gate Results
+
+> This PR introduces a hardcoded credential and an unsafe shell execution path. The critical secret exposure is the immediate remediation priority — it should be rotated and moved to a secret manager before merge. The command injection risk in the JavaScript helper is high severity and should also be addressed in this change.
+
+Status: failing because at least one critical finding was detected.
+
+Scanned `21` changed source file(s) out of `21` changed file(s).
+Findings: critical `4`, high `14`, medium `3`, low `0`.
+...
+```
+
+With terrain, enrichment, and adversarial verification:
+
+```markdown
+## PR Security Gate Results
+
+> This PR still contains a critical shell execution path after adversarial review, while a separate high-severity query finding appears constrained by application context and has been challenged for follow-up review.
+
+Status: failing because at least one critical finding was detected.
+
+Scanned `21` changed source file(s) out of `21` changed file(s).
+Findings: critical `4`, high `14`, medium `3`, low `0`.
+
+| Severity | File | Line | Finding | Taint Path | CWE | Fix Suggestion |
+| --- | --- | --- | --- | --- | --- | --- |
+| CRITICAL<br>NEW | `caretrack/support_tools.py` | 21 | User-controlled helper input reaches a shell execution path in the support tooling. (Adversarial review: sustained. Some validation exists earlier in the flow, but attacker-controlled data still reaches shell execution.) | HTTP request parameter (line 10) -> subprocess.run(..., shell=True) (line 21) | CWE-78 | Validate the helper input, avoid shell execution, and pass arguments as an explicit list instead of invoking a shell. |
+...
+
+<details>
+<summary>Challenged findings (1)</summary>
+
+| Severity | File | Line | Finding | Taint Path | CWE | Counter-Argument | Fix Suggestion |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| HIGH<br>PRE-EXISTING | `caretrack/db.py` | 44 | A database query is still built from user-controlled input with string concatenation in legacy code touched by this PR. | User-controlled database parameter (line 30) -> cursor.execute(query) (line 44) | CWE-89 | The query input is assembled from an internal enum rather than direct user input in this path, so exploitability may be limited. | Replace string-built queries with parameterized execution and keep untrusted values out of SQL text construction. |
+</details>
+```
+
+With cross-file taint tracing:
+
+```markdown
+<details>
+<summary>Extended Analysis (1)</summary>
+
+Low-confidence cross-file chains that originate in the diff and appear to reach a downstream sink:
+
+| File | Line | Confidence | Chain |
+| --- | --- | --- | --- |
+| `caretrack/admin.py` | 266 | low | preview_report_expression() [changed] -> export_report_pdf() [unchanged] -> subprocess.call() [sink] |
+
+</details>
+```
+
 ## Local Preview
 
-Render the exact markdown body locally without posting to GitHub:
+Run the full pipeline locally in Docker without posting to GitHub.
+
+The empty tree SHA (`4b825dc...`) is used as the base so every file in HEAD appears as a new addition — this makes the vulnerable samples show up in the diff for local smoke testing regardless of when they were first committed:
 
 ```bash
-python scanner/comment.py --input triaged-findings.json --dry-run --output comment-preview.md
+docker compose run --rm security-gate \
+  python scanner/domain_context.py --repo-root . --output domain_context.json
+
+docker compose run --rm security-gate \
+  python scanner/run_scan.py \
+    --mode local \
+    --rules rules \
+    --base-sha 4b825dc642cb6eb9a060e54bf8d69288fbee4904 \
+    --head-sha $(git rev-parse HEAD) \
+    --output scan-results.json
+
+docker compose run --rm security-gate \
+  python scanner/triage.py --input scan-results.json --output triaged-findings.json
+
+docker compose run --rm security-gate \
+  python scanner/terrain.py \
+    --input triaged-findings.json \
+    --context domain_context.json \
+    --output terrain-findings.json
+
+docker compose run --rm security-gate \
+  python scanner/ai_enrich.py \
+    --input terrain-findings.json \
+    --context domain_context.json \
+    --output enriched-findings.json
+
+docker compose run --rm security-gate \
+  python scanner/adversarial.py \
+    --input enriched-findings.json \
+    --context domain_context.json \
+    --output verified-findings.json
+
+docker compose run --rm security-gate \
+  python scanner/narrative.py --input verified-findings.json --output narrative-findings.json
+
+docker compose run --rm security-gate \
+  python scanner/comment.py --input narrative-findings.json --dry-run --output comment-preview.md
 ```
+
+For AI smoke testing, copy `.env.ai.example` to `.env.ai`, add a provider key, and re-run the domain context, enrichment, adversarial, or narrative step. Docker picks up `.env.ai` automatically via `compose.yaml`. If `.env.ai` is absent or contains no key, the AI steps still succeed with fallback output.
 
 ## Why This Is Useful
 
@@ -178,7 +294,6 @@ That makes it useful for both security teams and developers:
 ## Roadmap
 
 - Grow the current 21-rule baseline into a larger library with more obscure vulnerability checks
-- Document the local-vs-cloud tradeoffs from the validated Semgrep Cloud backend
 - Capture real PR screenshots from the consumer demo repo
 - Pin third-party GitHub Actions by commit SHA
 

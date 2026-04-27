@@ -30,10 +30,12 @@ class RunScanTests(unittest.TestCase):
         )
 
         with patch("scanner.run_scan.subprocess.run", return_value=fake_result):
-            payload = run_scan.run_local_scan("rules", ["src/app.py"], ["src/app.py"])
+            payload = run_scan.run_local_scan("rules", ["src/app.py"], ["src/app.py"], "base123", "head456")
 
         self.assertEqual(payload["metadata"]["scanner"], "semgrep")
         self.assertEqual(payload["metadata"]["reason"], "Scan completed.")
+        self.assertEqual(payload["metadata"]["base_sha"], "base123")
+        self.assertEqual(payload["metadata"]["head_sha"], "head456")
         self.assertEqual(payload["paths"]["scanned"], ["src/app.py"])
         self.assertEqual(payload["paths"]["changed"], ["src/app.py"])
         self.assertEqual(payload["results"][0]["check_id"], "rule-1")
@@ -41,7 +43,7 @@ class RunScanTests(unittest.TestCase):
     def test_run_cloud_scan_requires_token(self) -> None:
         with patch.dict("os.environ", {}, clear=True):
             with self.assertRaises(SystemExit) as context:
-                run_scan.run_cloud_scan("abc123", ["src/app.py"], ["src/app.py"])
+                run_scan.run_cloud_scan("abc123", "def456", ["src/app.py"])
 
         self.assertIn("SEMGREP_APP_TOKEN", str(context.exception))
 
@@ -52,10 +54,12 @@ class RunScanTests(unittest.TestCase):
 
         with patch.dict("os.environ", {"SEMGREP_APP_TOKEN": "token"}, clear=True):
             with patch("scanner.run_scan.subprocess.run", side_effect=fake_run):
-                payload = run_scan.run_cloud_scan("abc123", ["src/app.py"], ["src/app.py"])
+                payload = run_scan.run_cloud_scan("abc123", "def456", ["src/app.py"])
 
         self.assertEqual(payload["metadata"]["scanner"], "semgrep-cloud")
-        self.assertEqual(payload["paths"]["scanned"], ["src/app.py"])
+        self.assertEqual(payload["metadata"]["base_sha"], "abc123")
+        self.assertEqual(payload["metadata"]["head_sha"], "def456")
+        self.assertEqual(payload["paths"]["scanned"], [])
         self.assertEqual(payload["results"][0]["check_id"], "cloud-rule")
 
 
