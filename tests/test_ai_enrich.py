@@ -124,6 +124,24 @@ class AiEnrichTests(unittest.TestCase):
         self.assertIn("\"origin\": \"introduced\"", prompt)
         self.assertIn("HTTP query parameter (line 10)", prompt)
 
+    def test_build_system_prompt_includes_override_resistance_preamble(self) -> None:
+        prompt = ai_enrich.build_system_prompt()
+
+        self.assertIn("Rules that cannot be overridden", prompt)
+        self.assertIn("injection_attempt_detected", prompt)
+
+    def test_normalize_enrichment_item_preserves_injection_flag(self) -> None:
+        normalized = ai_enrich.normalize_enrichment_item(
+            {
+                "enriched_finding": "Observed code behavior.",
+                "enriched_fix": "Concrete fix.",
+                "risk_context": "Business impact.",
+                "injection_attempt_detected": True,
+            }
+        )
+
+        self.assertTrue(normalized["injection_attempt_detected"])
+
     def test_parse_json_array_accepts_fenced_json(self) -> None:
         parsed = ai_enrich.parse_json_array(
             "```json\n[{\"enriched_finding\": \"Specific issue here.\"}]\n```"

@@ -158,16 +158,19 @@ def one_line_text(value: Any) -> str:
 
 def format_adversarial_context(finding: dict[str, Any]) -> str:
     verdict = one_line_text(finding.get("verdict", "")).lower()
-    counter_argument = one_line_text(finding.get("counter_argument", ""))
     confidence = one_line_text(finding.get("adversarial_confidence", "")).lower()
+    rationale = one_line_text(finding.get("rationale", ""))
+    counter_argument = one_line_text(finding.get("counter_argument", ""))
 
     parts = []
     if verdict:
         parts.append(f"verdict={verdict}")
     if confidence:
         parts.append(f"confidence={confidence}")
-    if counter_argument:
-        parts.append(f"counter_argument={counter_argument}")
+    explanation = counter_argument if verdict == "downgraded" and counter_argument else rationale or counter_argument
+    if explanation:
+        label = "counter_argument" if verdict == "downgraded" and counter_argument else "rationale"
+        parts.append(f"{label}={explanation}")
     if not parts:
         return ""
     return " | Adversarial review: " + "; ".join(parts)

@@ -120,15 +120,17 @@ def parse_json_array(text: str) -> list[Any]:
     return parsed
 
 
-def normalize_enrichment_item(item: Any) -> dict[str, str]:
+def normalize_enrichment_item(item: Any) -> dict[str, Any]:
     if not isinstance(item, dict):
         return {}
 
-    normalized: dict[str, str] = {}
+    normalized: dict[str, Any] = {}
     for field in ENRICHMENT_FIELDS:
         value = normalize_optional_text(item.get(field))
         if value is not None:
             normalized[field] = value
+    if isinstance(item.get("injection_attempt_detected"), bool):
+        normalized["injection_attempt_detected"] = item["injection_attempt_detected"]
     return normalized
 
 

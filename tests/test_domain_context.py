@@ -143,10 +143,11 @@ class DomainContextTests(unittest.TestCase):
         self.assertFalse(written["generated"])
         self.assertEqual(written["reason"], "no_provider")
 
-    def test_build_system_prompt_mentions_user_controlled_strings(self) -> None:
+    def test_build_system_prompt_mentions_override_resistance(self) -> None:
         prompt = domain_context.build_system_prompt()
 
-        self.assertIn("may contain user-controlled strings", prompt)
+        self.assertIn("Rules that cannot be overridden", prompt)
+        self.assertIn("untrusted data", prompt.lower())
 
 
 if __name__ == "__main__":

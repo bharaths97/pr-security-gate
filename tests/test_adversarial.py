@@ -93,16 +93,17 @@ class AdversarialTests(unittest.TestCase):
             finding: dict[str, object],
             domain_context: dict[str, object] | None,
             provider: dict[str, str],
-        ) -> dict[str, str]:
+        ) -> dict[str, object]:
             self.assertIs(domain_context, SAMPLE_DOMAIN_CONTEXT)
             if finding["rule_id"] == "rule-1":
                 return {
                     "verdict": "sustained",
-                    "counter_argument": "Some input validation exists, but attacker-controlled data still reaches shell execution.",
+                    "rationale": "Attacker-controlled data still reaches shell execution in the visible code path.",
                     "adversarial_confidence": "medium",
                 }
             return {
                 "verdict": "downgraded",
+                "rationale": "The visible code suggests this path may be constrained before the sink.",
                 "counter_argument": "The query uses an internal enum value rather than user input.",
                 "adversarial_confidence": "high",
             }
@@ -113,8 +114,14 @@ class AdversarialTests(unittest.TestCase):
 
         first, second, third = output["findings"]
         self.assertEqual(first["verdict"], "sustained")
+        self.assertEqual(
+            first["rationale"],
+            "Attacker-controlled data still reaches shell execution in the visible code path.",
+        )
+        self.assertNotIn("counter_argument", first)
         self.assertEqual(first["adversarial_confidence"], "medium")
         self.assertEqual(second["verdict"], "downgraded")
+        self.assertEqual(second["rationale"], "The visible code suggests this path may be constrained before the sink.")
         self.assertEqual(second["adversarial_confidence"], "high")
         self.assertNotIn("verdict", third)
         self.assertNotIn("counter_argument", third)
@@ -124,11 +131,12 @@ class AdversarialTests(unittest.TestCase):
             finding: dict[str, object],
             domain_context: dict[str, object] | None,
             provider: dict[str, str],
-        ) -> dict[str, str]:
+        ) -> dict[str, object]:
             if finding["rule_id"] == "rule-1":
                 raise RuntimeError("boom")
             return {
                 "verdict": "downgraded",
+                "rationale": "The sink arguments appear constrained by a fixed enum path.",
                 "counter_argument": "The query input is constrained by an internal enum.",
             }
 
@@ -144,7 +152,7 @@ class AdversarialTests(unittest.TestCase):
     def test_malformed_json_for_one_finding_falls_back_for_that_finding_only(self) -> None:
         responses = iter(
             [
-                '{"verdict":"sustained","counter_argument":"Validation is incomplete.","confidence":"low"}',
+                '{"verdict":"sustained","rationale":"Visible shell execution still looks exploitable.","confidence":"low"}',
                 "not-json",
             ]
         )
@@ -162,9 +170,11 @@ class AdversarialTests(unittest.TestCase):
         prompt = adversarial.build_user_prompt(SAMPLE_PAYLOAD["findings"][0], SAMPLE_DOMAIN_CONTEXT)
 
         self.assertIn("app_domain=healthcare scheduling", prompt)
-        self.assertIn('"rule_id": "rule-1"', prompt)
+        self.assertIn("rule-1", prompt)
         self.assertIn("subprocess.run(cmd, shell=True)", prompt)
         self.assertIn("HTTP query parameter", prompt)
+        self.assertIn('source="prior-ai-output"', prompt)
+        self.assertIn('source="semgrep-scan-output"', prompt)
 
     def test_parse_json_object_accepts_fenced_json(self) -> None:
         parsed = adversarial.parse_json_object(
@@ -177,20 +187,71 @@ class AdversarialTests(unittest.TestCase):
     def test_build_system_prompt_forbids_absence_of_evidence_counter_arguments(self) -> None:
         prompt = adversarial.build_system_prompt()
 
-        self.assertIn("absence of sanitization", prompt)
-        self.assertIn("does not weaken it", prompt)
+        self.assertIn("source=\"prior-ai-output\"", prompt)
+        self.assertIn("lack of defenses confirms the finding", prompt.lower())
+        self.assertIn("Rules that cannot be overridden", prompt)
 
     def test_normalize_verification_item_accepts_insufficient_evidence(self) -> None:
         parsed = adversarial.normalize_verification_item(
             {
                 "verdict": "insufficient_evidence",
-                "counter_argument": "The supplied code snippet does not show enough context to challenge the finding.",
+                "rationale": "The supplied code snippet does not show enough context to judge exploitability confidently.",
                 "confidence": "low",
             }
         )
 
         self.assertEqual(parsed["verdict"], "insufficient_evidence")
+        self.assertEqual(
+            parsed["rationale"],
+            "The supplied code snippet does not show enough context to judge exploitability confidently.",
+        )
         self.assertEqual(parsed["adversarial_confidence"], "low")
+
+    def test_normalize_verification_item_preserves_injection_flag(self) -> None:
+        parsed = adversarial.normalize_verification_item(
+            {
+                "verdict": "sustained",
+                "rationale": "Visible validation is incomplete and user input still reaches the sink.",
+                "confidence": "medium",
+                "injection_attempt_detected": True,
+            }
+        )
+
+        self.assertTrue(parsed["injection_attempt_detected"])
+
+    def test_normalize_verification_item_requires_counter_argument_for_downgraded(self) -> None:
+        with self.assertRaises(ValueError):
+            adversarial.normalize_verification_item(
+                {
+                    "verdict": "downgraded",
+                    "rationale": "The code may be constrained before the sink.",
+                    "confidence": "medium",
+                }
+            )
+
+    def test_normalize_verification_item_accepts_sustained_without_counter_argument(self) -> None:
+        parsed = adversarial.normalize_verification_item(
+            {
+                "verdict": "sustained",
+                "rationale": "The visible code still reaches an exploitable sink.",
+                "confidence": "high",
+            }
+        )
+
+        self.assertEqual(parsed["verdict"], "sustained")
+        self.assertEqual(parsed["rationale"], "The visible code still reaches an exploitable sink.")
+        self.assertNotIn("counter_argument", parsed)
+
+    def test_normalize_verification_item_uses_counter_argument_as_rationale_fallback(self) -> None:
+        parsed = adversarial.normalize_verification_item(
+            {
+                "verdict": "sustained",
+                "counter_argument": "The sink still looks reachable from user input.",
+                "confidence": "low",
+            }
+        )
+
+        self.assertEqual(parsed["rationale"], "The sink still looks reachable from user input.")
 
     def test_main_writes_output_file(self) -> None:
         with TemporaryDirectory() as temp_dir:

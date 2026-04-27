@@ -77,7 +77,9 @@ def build_auditor_notes_table(findings: list[dict[str, Any]]) -> str:
                     escape_pipes(location_label(finding)),
                     severity_label(finding),
                     escape_pipes(normalize_verdict(finding.get("verdict", "")) or "none"),
-                    escape_pipes(trim_to_one_sentence(one_line_text(finding.get("counter_argument", "")), True))
+                    escape_pipes(
+                        adversarial_explanation_for_render(finding, prefer_counter_argument=True)
+                    )
                     or "No additional notes.",
                 ]
             )
@@ -140,6 +142,8 @@ def severity_label(finding: dict[str, Any]) -> str:
 
 
 def badge_for_finding(finding: dict[str, Any]) -> str:
+    if normalize_verdict(finding.get("verdict", "")) == "insufficient_evidence":
+        return "? Uncertain"
     badge = one_line_text(finding.get("badge", "")).upper()
     if badge:
         return badge
@@ -168,21 +172,38 @@ def capped_cell_text(text: str, finding: dict[str, Any], ensure_terminal_period:
     return trim_to_one_sentence(stripped, ensure_terminal_period)
 
 
+def adversarial_explanation_for_render(
+    finding: dict[str, Any],
+    *,
+    prefer_counter_argument: bool = False,
+) -> str:
+    rationale = capped_cell_text(str(finding.get("rationale", "")), finding, True)
+    counter_argument = capped_cell_text(str(finding.get("counter_argument", "")), finding, True)
+
+    if prefer_counter_argument and counter_argument:
+        return counter_argument
+    if rationale:
+        return rationale
+    return counter_argument
+
+
 def adversarial_note_for_main_table(finding: dict[str, Any]) -> str:
     verdict = normalize_verdict(finding.get("verdict", ""))
     severity = str(finding.get("severity", "")).strip().lower()
-    counter_argument = capped_cell_text(str(finding.get("counter_argument", "")), finding, True)
+    explanation = adversarial_explanation_for_render(finding)
 
     if severity == "critical":
         return ""
 
     if verdict == "sustained":
         note = "AI auditor: sustained"
+    elif verdict == "insufficient_evidence":
+        note = "AI auditor: uncertain"
     else:
         return ""
 
-    if counter_argument:
-        return f"{note} - {counter_argument}"
+    if explanation:
+        return f"{note} - {explanation}"
     return note
 
 
@@ -196,9 +217,9 @@ def render_finding_cell(finding: dict[str, Any], include_counter_argument: bool 
         details.append(f"<sub><em>Taint path: {escape_pipes(trim_to_one_sentence(taint_path, False))}</em></sub>")
 
     if include_counter_argument:
-        counter_argument = capped_cell_text(str(finding.get("counter_argument", "")), finding, True)
-        if counter_argument:
-            details.append(f"<sub><em>AI auditor challenge: {escape_pipes(counter_argument)}</em></sub>")
+        explanation = adversarial_explanation_for_render(finding, prefer_counter_argument=True)
+        if explanation:
+            details.append(f"<sub><em>AI auditor challenge: {escape_pipes(explanation)}</em></sub>")
     else:
         note = adversarial_note_for_main_table(finding)
         if note:
