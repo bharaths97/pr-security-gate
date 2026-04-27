@@ -51,6 +51,13 @@ def finding_key(finding: dict[str, Any]) -> tuple[str, str, int]:
     )
 
 
+def location_key(finding: dict[str, Any]) -> tuple[str, int]:
+    return (
+        str(finding["file"]),
+        int(finding["line"]),
+    )
+
+
 def normalize_finding(result: dict[str, Any]) -> dict[str, Any]:
     extra = result.get("extra", {})
     metadata = extra.get("metadata", {})
@@ -91,15 +98,50 @@ def normalize_lines(value: Any) -> str | None:
     return text if text.strip() else None
 
 
-def deduplicate_findings(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    deduped: dict[tuple[str, str, int], dict[str, Any]] = {}
-    for result in results:
-        finding = normalize_finding(result)
-        key = finding_key(finding)
+def get_rule_ids(finding: dict[str, Any]) -> list[str]:
+    raw_rule_ids = finding.get("rule_ids")
+    if isinstance(raw_rule_ids, list):
+        values = raw_rule_ids
+    else:
+        values = [finding.get("rule_id")]
+    normalized: list[str] = []
+    for value in values:
+        text = str(value).strip()
+        if text and text not in normalized:
+            normalized.append(text)
+    return normalized
+
+
+def merge_rule_ids(primary: dict[str, Any], secondary: dict[str, Any]) -> None:
+    merged = get_rule_ids(primary)
+    for rule_id in get_rule_ids(secondary):
+        if rule_id not in merged:
+            merged.append(rule_id)
+    if len(merged) > 1:
+        primary["rule_ids"] = merged
+
+
+def dedup_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: dict[tuple[str, int], dict[str, Any]] = {}
+    for finding in findings:
+        key = location_key(finding)
         existing = deduped.get(key)
-        if existing is None or SEVERITY_RANK[finding["severity"]] > SEVERITY_RANK[existing["severity"]]:
+        if existing is None:
             deduped[key] = finding
+            continue
+
+        merge_rule_ids(existing, finding)
+        if SEVERITY_RANK[finding["severity"]] > SEVERITY_RANK[existing["severity"]]:
+            replacement = dict(finding)
+            merge_rule_ids(replacement, existing)
+            deduped[key] = replacement
+
     return sort_findings(list(deduped.values()))
+
+
+def deduplicate_findings(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    findings = [normalize_finding(result) for result in results]
+    return dedup_findings(findings)
 
 
 def sort_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:

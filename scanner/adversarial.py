@@ -155,7 +155,7 @@ def normalize_verdict(value: Any) -> str | None:
     if cleaned is None:
         return None
     normalized = cleaned.lower()
-    if normalized in {"sustained", "downgraded"}:
+    if normalized in {"sustained", "downgraded", "insufficient_evidence"}:
         return normalized
     return None
 

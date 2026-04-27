@@ -174,6 +174,24 @@ class AdversarialTests(unittest.TestCase):
         self.assertEqual(parsed["verdict"], "downgraded")
         self.assertEqual(parsed["confidence"], "high")
 
+    def test_build_system_prompt_forbids_absence_of_evidence_counter_arguments(self) -> None:
+        prompt = adversarial.build_system_prompt()
+
+        self.assertIn("absence of sanitization", prompt)
+        self.assertIn("does not weaken it", prompt)
+
+    def test_normalize_verification_item_accepts_insufficient_evidence(self) -> None:
+        parsed = adversarial.normalize_verification_item(
+            {
+                "verdict": "insufficient_evidence",
+                "counter_argument": "The supplied code snippet does not show enough context to challenge the finding.",
+                "confidence": "low",
+            }
+        )
+
+        self.assertEqual(parsed["verdict"], "insufficient_evidence")
+        self.assertEqual(parsed["adversarial_confidence"], "low")
+
     def test_main_writes_output_file(self) -> None:
         with TemporaryDirectory() as temp_dir:
             input_path = Path(temp_dir) / "enriched-findings.json"
